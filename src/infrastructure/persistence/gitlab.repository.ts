@@ -24,44 +24,38 @@ export class GitlabRepository implements VersionControlRepository {
 
   async getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
     try {
-      // Get MR details to retrieve SHAs
-      await this.fetchMergeRequestDetails(projectId, mergeRequestId);
-      
       // Get changes (including diffs)
-      const response = await this.apiRequest(
-        `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/changes`
+      const mrResponse = await this.apiRequest(
+          `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/changes`
       );
 
-      if (!response.ok) {
-        throw new Error(`Failed to fetch MR files: ${response.statusText}`);
+      if (!mrResponse.ok) {
+        throw new Error(`Failed to fetch MR files: ${mrResponse.statusText}`);
       }
 
-      const data = await response.json();
+      const filesData = await mrResponse.json();
       const files: CodeFile[] = [];
 
-      for (const change of data.changes) {
-        const filePath = change.new_path;
-        try {
-          const fileContent = await this.getFileContent(projectId, filePath, data.source_branch);
-          const language = this.detectLanguage(filePath);
-          const diffLines = this.parseDiff(change.diff);
-          
-          files.push(
-            new CodeFile(
-              filePath,
-              fileContent,
-              language,
-              diffLines,
-            ),
-          );
-        } catch (err) {
-          console.warn(`Skipping file ${filePath} due to error: ${err.message}`);
-        }
-      }
+      for (const file of filesData.changes) {
+        const filePath = file.new_path;
 
-      return files;
-    } catch (error) {
-      console.error('Error fetching merge request files:', error);
+        const fileContent = await this.getFileContent(projectId, filePath, filesData.source_branch);
+        const language = this.detectLanguage(filePath);
+        const diffLines = this.parseDiff(file.diff);
+
+        files.push(
+            new CodeFile(
+                filePath,
+                fileContent,
+                language,
+                diffLines,
+            )
+        );
+        return files;
+      }
+    }
+    catch (error) {
+      console.log(`Failed to get MR files: ${error.message}`)
       throw new Error(`Failed to get MR files: ${error.message}`);
     }
   }
@@ -97,8 +91,7 @@ export class GitlabRepository implements VersionControlRepository {
       );
       
       if (!response.ok) {
-        console.warn(`Failed to fetch notes: ${response.statusText}`);
-        return;
+        throw new Error(`Failed to fetch notes: ${response.statusText}`);
       }
       
       const notes = await response.json();
@@ -117,11 +110,8 @@ export class GitlabRepository implements VersionControlRepository {
       for (const noteId of aiNoteIds) {
         try {
           const deleteResponse = await fetch(
-            `${this.apiBaseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes/${noteId}`,
-            {
-              method: 'DELETE',
-              headers: { 'PRIVATE-TOKEN': this.apiToken },
-            }
+            `/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes/${noteId}`,
+            { method: 'DELETE' }
           );
 
           if (!deleteResponse.ok) {
@@ -139,14 +129,9 @@ export class GitlabRepository implements VersionControlRepository {
   async submitComment(
     projectId: string,
     mergeRequestId: number,
-    comment: { filePath: string; lineNumber: number; content: string },
+    comment: { filePath: string; lineNumber: number; content: string }
   ): Promise<boolean> {
     try {
-      // Ensure we have the necessary SHAs
-      if (!this.diffReferences.baseSha) {
-        await this.fetchMergeRequestDetails(projectId, mergeRequestId);
-      }
-      
       // Attempt to create a positioned comment
       if (this.diffReferences.baseSha && this.diffReferences.headSha) {
         const commentData = {
@@ -161,14 +146,10 @@ export class GitlabRepository implements VersionControlRepository {
           }
         };
         
-        const response = await fetch(
-          `${this.apiBaseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/discussions`,
+        const response = await this.apiRequest(
+          `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/discussions`,
           {
             method: 'POST',
-            headers: {
-              'PRIVATE-TOKEN': this.apiToken,
-              'Content-Type': 'application/json',
-            },
             body: JSON.stringify(commentData),
           }
         );
@@ -187,15 +168,11 @@ export class GitlabRepository implements VersionControlRepository {
           }
         };
         
-        const retryResponse = await fetch(
-          `${this.apiBaseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/discussions`,
+        const retryResponse = await this.apiRequest(
+          `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/discussions`,
           {
             method: 'POST',
-            headers: {
-              'PRIVATE-TOKEN': this.apiToken,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(commentDataWithOld),
+            body: JSON.stringify(commentDataWithOld)
           }
         );
         
@@ -205,14 +182,10 @@ export class GitlabRepository implements VersionControlRepository {
       }
       
       // Fallback: add a simple note with file and line reference
-      const noteResponse = await fetch(
-        `${this.apiBaseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes`,
+      const noteResponse = await this.apiRequest(
+        `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes`,
         {
           method: 'POST',
-          headers: {
-            'PRIVATE-TOKEN': this.apiToken,
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             body: `**Code Review**: ${comment.filePath} (ligne ${comment.lineNumber})\n\n${comment.content}`,
           }),
@@ -234,7 +207,7 @@ export class GitlabRepository implements VersionControlRepository {
           method: 'POST',
           body: JSON.stringify({
             body: `## AI Code Review Summary\n\n${summary}`,
-          }),
+          })
         }
       );
 
@@ -246,27 +219,6 @@ export class GitlabRepository implements VersionControlRepository {
   }
 
   // Helper methods
-  private async fetchMergeRequestDetails(projectId: string, mergeRequestId: number): Promise<void> {
-    try {
-      const response = await this.apiRequest(
-        `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}`
-      );
-
-      if (response.ok) {
-        const mrData = await response.json();
-        if (mrData.diff_refs) {
-          this.diffReferences = {
-            baseSha: mrData.diff_refs.base_sha,
-            startSha: mrData.diff_refs.start_sha,
-            headSha: mrData.diff_refs.head_sha
-          };
-        }
-      }
-    } catch (error) {
-      console.warn('Failed to fetch MR details:', error);
-    }
-  }
-
   private async apiRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
     const headers = {
       'PRIVATE-TOKEN': this.apiToken,
@@ -293,6 +245,7 @@ export class GitlabRepository implements VersionControlRepository {
     for (const line of lines) {
       // Parse diff header to get starting line numbers
       if (line.startsWith('@@')) {
+        // Parse the hunk header, e.g. @@ -1,7 +1,7 @@
         const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
         if (match) {
           currentLineOld = parseInt(match[1], 10);
@@ -307,18 +260,17 @@ export class GitlabRepository implements VersionControlRepository {
           new FileDiff(
             currentLineNew,
             line.substring(1),
-            DiffType.ADDED,
-          ),
+            DiffType.ADDED
+          )
         );
         if (currentLineNew !== null) currentLineNew++;
       } else if (line.startsWith('-') && !line.startsWith('---')) {
-        // Removed line
         changes.push(
           new FileDiff(
             null,
             line.substring(1),
-            DiffType.DELETED,
-          ),
+            DiffType.DELETED
+          )
         );
         if (currentLineOld !== null) currentLineOld++;
       } else if (!line.startsWith('@@') && !line.startsWith('---') && !line.startsWith('+++')) {
@@ -327,8 +279,8 @@ export class GitlabRepository implements VersionControlRepository {
           new FileDiff(
             currentLineNew,
             line,
-            DiffType.UNCHANGED,
-          ),
+            DiffType.UNCHANGED
+          )
         );
         if (currentLineOld !== null) currentLineOld++;
         if (currentLineNew !== null) currentLineNew++;

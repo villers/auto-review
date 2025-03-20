@@ -13,16 +13,97 @@ export class GithubRepository implements VersionControlRepository {
     this.apiToken = this.configService.get<string>('GITHUB_API_TOKEN', '');
   }
 
+  async getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
+    try {
+      // In GitHub, projectId is in format 'owner/repo' and mergeRequestId is the PR number
+      const [owner, repo] = projectId.split('/');
+
+      // Get the PR details to access the base and head SHAs
+      const prResponse = await this.apiRequest(
+          `repos/${owner}/${repo}/pulls/${mergeRequestId}`
+      );
+
+      if (!prResponse.ok) {
+        throw new Error(`Failed to fetch PR details: ${prResponse.statusText}`);
+      }
+
+      const prData = await prResponse.json();
+      const headSha = prData.head.sha;
+
+      // Get the files changed in the PR
+      const filesResponse = await this.apiRequest(
+          `repos/${owner}/${repo}/pulls/${mergeRequestId}/files`
+      );
+
+      if (!filesResponse.ok) {
+        throw new Error(`Failed to fetch PR files: ${filesResponse.statusText}`);
+      }
+
+      const filesData = await filesResponse.json();
+      const files: CodeFile[] = [];
+
+      for (const file of filesData) {
+        if (file.status === 'removed' || file.binary) {
+          continue;
+        }
+
+        const fileContent = await this.getFileContent(projectId, file.filename, headSha);
+        const language = this.detectLanguage(file.filename);
+        const changes = this.parsePatch(file.patch || '');
+
+        files.push(
+            new CodeFile(
+              file.filename,
+              fileContent,
+              language,
+              changes
+            )
+        );
+        return files;
+      }
+    }
+    catch (error) {
+      console.log(`Failed to get PR files: ${error.message}`);
+      throw new Error(`Failed to get PR files: ${error.message}`);
+    }
+  }
+
+  async getMergeRequestDiff(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
+    return this.getMergeRequestFiles(projectId, mergeRequestId);
+  }
+
+  async getFileContent(projectId: string, filePath: string, ref: string = 'main'): Promise<string> {
+    try {
+      const [owner, repo] = projectId.split('/');
+      const encodedPath = encodeURIComponent(filePath);
+      
+      const response = await this.apiRequest(
+        `repos/${owner}/${repo}/contents/${encodedPath}?ref=${ref}`
+      );
+
+      if (!response.ok) {
+        throw new Error(`Failed to fetch file content: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      
+      // GitHub API returns content as base64 encoded
+      return Buffer.from(data.content, 'base64').toString('utf-8');
+    } catch (error) {
+      console.error(`Error fetching file content for ${filePath}:`, error);
+      throw new Error(`Failed to get file content: ${error.message}`);
+    }
+  }
+
   async clearPreviousComments(projectId: string, mergeRequestId: number): Promise<void> {
     try {
+      console.log(`Clearing previous comments from PR ${mergeRequestId}...`);
+
       const [owner, repo] = projectId.split('/');
       
       // Get all comments on the PR
-      const commentsResponse = await fetch(
-        `${this.apiBaseUrl}/repos/${owner}/${repo}/issues/${mergeRequestId}/comments`,
-        {
-          headers: this.getHeaders(),
-        }
+      const commentsResponse = await this.apiRequest(
+        `repos/${owner}/${repo}/issues/${mergeRequestId}/comments`
       );
 
       if (!commentsResponse.ok) {
@@ -44,31 +125,22 @@ export class GithubRepository implements VersionControlRepository {
       // Delete each AI comment
       for (const comment of aiComments) {
         try {
-          const deleteResponse = await fetch(
-            `${this.apiBaseUrl}/repos/${owner}/${repo}/issues/comments/${comment.id}`,
-            {
-              method: 'DELETE',
-              headers: this.getHeaders(),
-            }
+          const deleteResponse = await this.apiRequest(
+            `repos/${owner}/${repo}/issues/comments/${comment.id}`,
+            { method: 'DELETE' }
           );
 
           if (!deleteResponse.ok) {
             console.warn(`Failed to delete comment ${comment.id}: ${deleteResponse.statusText}`);
-          } else {
-            console.log(`Successfully deleted comment ${comment.id}`);
           }
         } catch (error) {
           console.warn(`Error deleting comment ${comment.id}:`, error.message);
-          // Continue with other comments
         }
       }
       
       // Get review comments as well (comments on specific lines of code)
-      const reviewCommentsResponse = await fetch(
-        `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/${mergeRequestId}/comments`,
-        {
-          headers: this.getHeaders(),
-        }
+      const reviewCommentsResponse = await this.apiRequest(
+        `repos/${owner}/${repo}/pulls/${mergeRequestId}/comments`
       );
 
       if (reviewCommentsResponse.ok) {
@@ -78,7 +150,7 @@ export class GithubRepository implements VersionControlRepository {
         const aiReviewComments = reviewComments.filter(
           (comment: any) => 
             comment.body && 
-            comment.body.includes('AI Code Review')
+            comment.body.includes('Code Review:')
         );
 
         console.log(`Found ${aiReviewComments.length} AI-generated review comments to delete`);
@@ -86,134 +158,21 @@ export class GithubRepository implements VersionControlRepository {
         // Delete each AI review comment
         for (const comment of aiReviewComments) {
           try {
-            const deleteResponse = await fetch(
-              `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/comments/${comment.id}`,
-              {
-                method: 'DELETE',
-                headers: this.getHeaders(),
-              }
+            const deleteResponse = await this.apiRequest(
+              `repos/${owner}/${repo}/pulls/comments/${comment.id}`,
+              { method: 'DELETE' }
             );
 
             if (!deleteResponse.ok) {
               console.warn(`Failed to delete review comment ${comment.id}: ${deleteResponse.statusText}`);
-            } else {
-              console.log(`Successfully deleted review comment ${comment.id}`);
             }
           } catch (error) {
             console.warn(`Error deleting review comment ${comment.id}:`, error.message);
-            // Continue with other comments
           }
         }
       }
-      
-      console.log('Previous AI comments cleared successfully');
     } catch (error) {
       console.error('Error clearing previous comments:', error);
-      // Continue even if clearing fails
-    }
-  }
-
-  async getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
-    try {
-      // In GitHub, projectId is in format 'owner/repo' and mergeRequestId is the PR number
-      const [owner, repo] = projectId.split('/');
-      
-      // Get the PR details to access the base and head SHAs
-      const prResponse = await fetch(
-        `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/${mergeRequestId}`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
-
-      if (!prResponse.ok) {
-        throw new Error(`Failed to fetch PR details: ${prResponse.statusText}`);
-      }
-
-      const prData = await prResponse.json();
-      const headSha = prData.head.sha;
-
-      // Get the files changed in the PR
-      const filesResponse = await fetch(
-        `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/${mergeRequestId}/files`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
-
-      if (!filesResponse.ok) {
-        throw new Error(`Failed to fetch PR files: ${filesResponse.statusText}`);
-      }
-
-      const filesData = await filesResponse.json();
-
-      // Process each file
-      const files: CodeFile[] = [];
-      for (const file of filesData) {
-        // Skip binary files or deleted files
-        if (file.status === 'removed' || file.binary) {
-          continue;
-        }
-
-        // Get the file content
-        let fileContent = '';
-        try {
-          fileContent = await this.getFileContent(projectId, file.filename, headSha);
-        } catch (error) {
-          console.warn(`Could not get content for ${file.filename}: ${error.message}`);
-          // Continue with empty content if we can't fetch it
-        }
-
-        // Process the patch to create FileDiff objects
-        const changes = this.parsePatch(file.patch || '');
-
-        // Determine the language based on the file extension
-        const language = this.detectLanguage(file.filename);
-
-        files.push(
-          new CodeFile(
-            file.filename,
-            fileContent,
-            language,
-            changes
-          )
-        );
-      }
-
-      return files;
-    } catch (error) {
-      console.error('Error fetching GitHub PR files:', error);
-      throw new Error(`Failed to get PR files: ${error.message}`);
-    }
-  }
-
-  async getMergeRequestDiff(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
-    return this.getMergeRequestFiles(projectId, mergeRequestId);
-  }
-
-  async getFileContent(projectId: string, filePath: string, ref: string = 'main'): Promise<string> {
-    try {
-      const [owner, repo] = projectId.split('/');
-      const encodedPath = encodeURIComponent(filePath);
-      
-      const response = await fetch(
-        `${this.apiBaseUrl}/repos/${owner}/${repo}/contents/${encodedPath}?ref=${ref}`,
-        {
-          headers: this.getHeaders(),
-        }
-      );
-
-      if (!response.ok) {
-        throw new Error(`Failed to fetch file content: ${response.statusText}`);
-      }
-
-      const data = await response.json();
-      
-      // GitHub API returns content as base64 encoded
-      return Buffer.from(data.content, 'base64').toString('utf-8');
-    } catch (error) {
-      console.error(`Error fetching file content for ${filePath}:`, error);
-      throw new Error(`Failed to get file content: ${error.message}`);
     }
   }
 
@@ -226,11 +185,8 @@ export class GithubRepository implements VersionControlRepository {
       const [owner, repo] = projectId.split('/');
       
       // First, get the PR to find the latest commit SHA
-      const prResponse = await fetch(
-        `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/${mergeRequestId}`,
-        {
-          headers: this.getHeaders(),
-        }
+      const prResponse = await this.apiRequest(
+        `repos/${owner}/${repo}/pulls/${mergeRequestId}`
       );
 
       if (!prResponse.ok) {
@@ -241,27 +197,35 @@ export class GithubRepository implements VersionControlRepository {
       const commitId = prData.head.sha;
 
       // Create a review comment
-      const response = await fetch(
-        `${this.apiBaseUrl}/repos/${owner}/${repo}/pulls/${mergeRequestId}/comments`,
+      const response = await this.apiRequest(
+        `repos/${owner}/${repo}/pulls/${mergeRequestId}/comments`,
         {
           method: 'POST',
-          headers: {
-            ...this.getHeaders(),
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
             commit_id: commitId,
             path: comment.filePath,
             line: comment.lineNumber,
-            body: comment.content,
-            position: comment.lineNumber, // This is a simplification; GitHub needs the position in the diff
-          }),
+            body: `Code Review: ${comment.content}`
+          })
         }
       );
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Failed to submit comment: ${JSON.stringify(errorData)}`);
+        console.warn(`Failed to submit comment: ${JSON.stringify(errorData)}`);
+        
+        // Try using the issue comments endpoint as a fallback
+        const fallbackResponse = await this.apiRequest(
+          `repos/${owner}/${repo}/issues/${mergeRequestId}/comments`,
+          {
+            method: 'POST',
+            body: JSON.stringify({
+              body: `**Code Review**: ${comment.filePath} (line ${comment.lineNumber})\n\n${comment.content}`
+            })
+          }
+        );
+        
+        return fallbackResponse.ok;
       }
 
       return true;
@@ -276,38 +240,37 @@ export class GithubRepository implements VersionControlRepository {
       const [owner, repo] = projectId.split('/');
       
       // Add a regular PR comment with the summary
-      const response = await fetch(
-        `${this.apiBaseUrl}/repos/${owner}/${repo}/issues/${mergeRequestId}/comments`,
+      const response = await this.apiRequest(
+        `repos/${owner}/${repo}/issues/${mergeRequestId}/comments`,
         {
           method: 'POST',
-          headers: {
-            ...this.getHeaders(),
-            'Content-Type': 'application/json',
-          },
           body: JSON.stringify({
-            body: `## AI Code Review Summary\n\n${summary}`,
-          }),
+            body: `## AI Code Review Summary\n\n${summary}`
+          })
         }
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(`Failed to submit review summary: ${JSON.stringify(errorData)}`);
-      }
-
-      return true;
+      return response.ok;
     } catch (error) {
       console.error('Error submitting GitHub PR summary:', error);
       throw new Error(`Failed to submit review summary: ${error.message}`);
     }
   }
 
-  private getHeaders(): Record<string, string> {
-    return {
+  // Helper methods
+  private async apiRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
+    const headers = {
       'Authorization': `token ${this.apiToken}`,
       'Accept': 'application/vnd.github.v3+json',
+      'Content-Type': 'application/json',
       'X-GitHub-Api-Version': '2022-11-28',
+      ...options.headers
     };
+
+    return fetch(`${this.apiBaseUrl}/${endpoint}`, {
+      ...options,
+      headers
+    });
   }
 
   private parsePatch(patch: string): FileDiff[] {
@@ -317,13 +280,11 @@ export class GithubRepository implements VersionControlRepository {
 
     const changes: FileDiff[] = [];
     const lines = patch.split('\n');
-    
-    // Track the current line numbers
     let oldLineNumber: number | null = null;
     let newLineNumber: number | null = null;
 
-    // Simple heuristic parser for the patch format
     for (const line of lines) {
+      // Parse diff header to get starting line numbers
       if (line.startsWith('@@')) {
         // Parse the hunk header, e.g. @@ -1,7 +1,7 @@
         const match = line.match(/@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/);
@@ -334,7 +295,7 @@ export class GithubRepository implements VersionControlRepository {
         continue;
       }
 
-      if (line.startsWith('+')) {
+      if (line.startsWith('+') && !line.startsWith('+++')) {
         changes.push(
           new FileDiff(
             newLineNumber,
@@ -343,7 +304,7 @@ export class GithubRepository implements VersionControlRepository {
           )
         );
         if (newLineNumber !== null) newLineNumber++;
-      } else if (line.startsWith('-')) {
+      } else if (line.startsWith('-') && !line.startsWith('---')) {
         changes.push(
           new FileDiff(
             null,
