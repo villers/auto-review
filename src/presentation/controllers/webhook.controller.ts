@@ -1,7 +1,7 @@
 import { Controller, Post, Body, Headers, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
-import { AnalyzeMergeRequestUseCase } from '../../core/usecases/analyze-merge-request.usecase';
+import { AnalyzeMergeRequestUseCase } from '@core/usecases/analyze-merge-request.usecase';
 
 @ApiTags('webhook')
 @Controller('webhook')

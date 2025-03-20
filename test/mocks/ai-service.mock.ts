@@ -1,24 +1,24 @@
-import { AIService, AIServiceResponse } from '../../src/core/interfaces/ai-service.interface';
-import { CodeFile } from '../../src/core/domain/entities/code-file.entity';
-import { CommentCategory, CommentSeverity } from '../../src/core/domain/entities/review.entity';
+import { CodeFile } from '@core/domain/entities/code-file.entity';
+import {AIResponse} from "@core/domain/entities/ai-response.entity";
+import {AIRepository} from "@core/domain/repositories/ai.repository";
 
-export class MockAIService implements AIService {
-  private mockResponse: AIServiceResponse = {
+export class MockAIService implements AIRepository {
+  private mockResponse: AIResponse = {
     comments: [],
     summary: 'Mock summary'
   };
 
-  constructor(mockResponse?: AIServiceResponse) {
+  constructor(mockResponse?: AIResponse) {
     if (mockResponse) {
       this.mockResponse = mockResponse;
     }
   }
 
-  setMockResponse(response: AIServiceResponse): void {
+  setMockResponse(response: AIResponse): void {
     this.mockResponse = response;
   }
 
-  async analyzeCode(files: CodeFile[]): Promise<AIServiceResponse> {
+  async analyzeCode(files: CodeFile[]): Promise<AIResponse> {
     return this.mockResponse;
   }
 }

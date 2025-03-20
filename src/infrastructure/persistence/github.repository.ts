@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { VersionControlRepository } from '../../core/domain/repositories/version-control.repository';
-import { CodeFile, DiffType, FileDiff } from '../../core/domain/entities/code-file.entity';
+import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
+import { CodeFile, DiffType, FileDiff } from '@core/domain/entities/code-file.entity';
 
 @Injectable()
 export class GithubRepository implements VersionControlRepository {
-  private apiBaseUrl: string;
-  private apiToken: string;
+  private readonly apiBaseUrl: string;
+  private readonly apiToken: string;
 
   constructor(private readonly configService: ConfigService) {
     this.apiBaseUrl = this.configService.get<string>('GITHUB_API_URL', 'https://api.github.com');
@@ -131,7 +131,6 @@ export class GithubRepository implements VersionControlRepository {
       }
 
       const prData = await prResponse.json();
-      const baseSha = prData.base.sha;
       const headSha = prData.head.sha;
 
       // Get the files changed in the PR
@@ -176,8 +175,6 @@ export class GithubRepository implements VersionControlRepository {
             file.filename,
             fileContent,
             language,
-            file.additions,
-            file.deletions,
             changes
           )
         );
@@ -340,7 +337,6 @@ export class GithubRepository implements VersionControlRepository {
       if (line.startsWith('+')) {
         changes.push(
           new FileDiff(
-            null,
             newLineNumber,
             line.substring(1),
             DiffType.ADDED
@@ -350,7 +346,6 @@ export class GithubRepository implements VersionControlRepository {
       } else if (line.startsWith('-')) {
         changes.push(
           new FileDiff(
-            oldLineNumber,
             null,
             line.substring(1),
             DiffType.DELETED
@@ -360,7 +355,6 @@ export class GithubRepository implements VersionControlRepository {
       } else if (!line.startsWith('\\')) { // Ignore "\ No newline at end of file"
         changes.push(
           new FileDiff(
-            oldLineNumber,
             newLineNumber,
             line,
             DiffType.UNCHANGED

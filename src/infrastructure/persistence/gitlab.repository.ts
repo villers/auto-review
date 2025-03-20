@@ -1,9 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { VersionControlRepository } from '../../core/domain/repositories/version-control.repository';
-import { CodeFile, DiffType, FileDiff } from '../../core/domain/entities/code-file.entity';
+import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
+import { CodeFile, DiffType, FileDiff } from '@core/domain/entities/code-file.entity';
 
-// Extension de FileDiff pour stocker les line_codes
 interface EnhancedDiff {
   filePath: string;
   lineNumber: number;
@@ -12,11 +11,9 @@ interface EnhancedDiff {
 
 @Injectable()
 export class GitlabRepository implements VersionControlRepository {
-  private apiBaseUrl: string;
-  private apiToken: string;
-  // Stockage local des line_codes
+  private readonly apiBaseUrl: string;
+  private readonly apiToken: string;
   private diffMap: EnhancedDiff[] = [];
-  // Stockage des SHA nécessaires pour le positionnement des commentaires
   private baseSha: string | null = null;
   private startSha: string | null = null;
   private headSha: string | null = null;
@@ -90,8 +87,6 @@ export class GitlabRepository implements VersionControlRepository {
               filePath,
               fileContent,
               language,
-              change.additions,
-              change.deletions,
               diffLines,
             ),
           );
@@ -207,7 +202,6 @@ export class GitlabRepository implements VersionControlRepository {
         // Added line
         changes.push(
           new FileDiff(
-            null,
             currentLineNew,
             line.substring(1),
             DiffType.ADDED,
@@ -218,7 +212,6 @@ export class GitlabRepository implements VersionControlRepository {
         // Removed line
         changes.push(
           new FileDiff(
-            currentLineOld,
             null,
             line.substring(1),
             DiffType.DELETED,
@@ -229,7 +222,6 @@ export class GitlabRepository implements VersionControlRepository {
         // Unchanged line
         changes.push(
           new FileDiff(
-            currentLineOld,
             currentLineNew,
             line,
             DiffType.UNCHANGED,

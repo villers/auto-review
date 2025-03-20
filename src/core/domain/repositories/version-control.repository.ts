@@ -1,4 +1,4 @@
-import { CodeFile } from '../entities/code-file.entity';
+import { CodeFile } from '@core/domain/entities/code-file.entity';
 
 export interface VersionControlRepository {
   getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]>;

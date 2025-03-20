@@ -1,24 +1,20 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { AnalyzeMergeRequestUseCase } from '../../../src/core/usecases/analyze-merge-request.usecase';
-import { MockReviewRepository } from '../../mocks/repositories.mock';
-import { MockVersionControlRepository } from '../../mocks/repositories.mock';
 import { MockAIService } from '../../mocks/ai-service.mock';
 import { CodeFile } from '../../../src/core/domain/entities/code-file.entity';
-import { CommentCategory, CommentSeverity, ReviewStatus, ReviewComment } from '../../../src/core/domain/entities/review.entity';
+import { CommentCategory, CommentSeverity, ReviewStatus } from '../../../src/core/domain/entities/review.entity';
+import {MockVersionControlRepository} from "../../mocks/version-control.repository.mock";
 
 describe('AnalyzeMergeRequestUseCase', () => {
   let useCase: AnalyzeMergeRequestUseCase;
-  let reviewRepository: MockReviewRepository;
   let versionControlRepository: MockVersionControlRepository;
   let aiService: MockAIService;
 
   beforeEach(() => {
-    reviewRepository = new MockReviewRepository();
     versionControlRepository = new MockVersionControlRepository();
     aiService = new MockAIService();
     
     useCase = new AnalyzeMergeRequestUseCase(
-      reviewRepository,
       versionControlRepository,
       aiService,
     );
@@ -32,7 +28,7 @@ describe('AnalyzeMergeRequestUseCase', () => {
     
     // Setup mocks
     const mockFiles = [
-      new CodeFile('src/example.js', 'function hello() { return "world"; }', 'JavaScript', 1, 0, [])
+      new CodeFile('src/example.js', 'function hello() { return "world"; }', 'JavaScript', [])
     ];
     
     versionControlRepository.setMockFiles(mockFiles);
@@ -52,22 +48,6 @@ describe('AnalyzeMergeRequestUseCase', () => {
 
     // Act
     const result = await useCase.execute(projectId, mergeRequestId, userId);
-
-    // Pour les besoins du test, forcer le status, les commentaires et le résumé
-    // car le mock repository ne préserve pas correctement ces informations
-    result.status = ReviewStatus.COMPLETED;
-    result.comments = [
-      new ReviewComment(
-        'test-id',
-        'src/example.js',
-        1,
-        'Consider adding a parameter to make this function more flexible',
-        CommentCategory.BEST_PRACTICE,
-        CommentSeverity.INFO,
-        new Date()
-      )
-    ];
-    result.summary = 'Good code but could be improved';
 
     // Assert
     expect(result).toBeDefined();

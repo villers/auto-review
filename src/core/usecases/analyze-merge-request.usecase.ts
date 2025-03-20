@@ -1,14 +1,12 @@
 import { v4 as uuidv4 } from 'uuid';
-import { AIService } from '../interfaces/ai-service.interface';
-import { ReviewRepository } from '../domain/repositories/review.repository';
-import { VersionControlRepository } from '../domain/repositories/version-control.repository';
-import { Review, ReviewComment, ReviewStatus } from '../domain/entities/review.entity';
+import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
+import { Review, ReviewComment, ReviewStatus } from '@core/domain/entities/review.entity';
+import {AIRepository} from "@core/domain/repositories/ai.repository";
 
 export class AnalyzeMergeRequestUseCase {
   constructor(
-      private readonly reviewRepository: ReviewRepository,
       private readonly versionControlRepository: VersionControlRepository,
-      private readonly aiService: AIService,
+      private readonly aiService: AIRepository,
   ) {}
 
   async execute(
@@ -29,36 +27,17 @@ export class AnalyzeMergeRequestUseCase {
         [],
     );
 
-    await this.reviewRepository.createReview(review);
-
     try {
-      // Update status to in progress
-      const updatedReview = new Review(
-          review.id,
-          review.projectId,
-          review.mergeRequestId,
-          review.commitSha,
-          review.createdAt,
-          review.userId,
-          ReviewStatus.IN_PROGRESS,
-          review.comments,
-          review.summary
-      );
-      await this.reviewRepository.updateReview(updatedReview);
-
-      // IMPORTANT: Supprimer d'abord les anciens commentaires AVANT d'en ajouter de nouveaux
       await this.versionControlRepository.clearPreviousComments(
           projectId,
           mergeRequestId
       );
 
-      // Get the files from the merge request
       const mrFiles = await this.versionControlRepository.getMergeRequestDiff(
           projectId,
           mergeRequestId,
       );
 
-      // Analyze the code using AI service
       const aiResponse = await this.aiService.analyzeCode(mrFiles);
 
       // Create review comments from AI response
@@ -95,7 +74,7 @@ export class AnalyzeMergeRequestUseCase {
       );
 
       // Update the review record with comments and status
-      const completedReview = new Review(
+      return new Review(
           review.id,
           review.projectId,
           review.mergeRequestId,
@@ -106,30 +85,8 @@ export class AnalyzeMergeRequestUseCase {
           comments,
           aiResponse.summary,
       );
-
-      // Assurez-vous de renvoyer l'objet review avec le statut COMPLETED
-      const savedReview = await this.reviewRepository.updateReview(completedReview);
-      // Vérifier que le statut est conservé
-      if (savedReview.status !== ReviewStatus.COMPLETED) {
-        console.warn('Review status was changed unexpectedly. Creating new review with COMPLETED status.');
-        // Créer une nouvelle instance au lieu de modifier directement la propriété en lecture seule
-        const correctedReview = new Review(
-          savedReview.id,
-          savedReview.projectId,
-          savedReview.mergeRequestId,
-          savedReview.commitSha,
-          savedReview.createdAt,
-          savedReview.userId,
-          ReviewStatus.COMPLETED, // Force le statut à COMPLETED
-          savedReview.comments,
-          savedReview.summary
-        );
-        return await this.reviewRepository.updateReview(correctedReview);
-      }
-      return savedReview;
     } catch (error) {
-      // Update review status to failed
-      const failedReview = new Review(
+      return new Review(
           review.id,
           review.projectId,
           review.mergeRequestId,
@@ -140,8 +97,6 @@ export class AnalyzeMergeRequestUseCase {
           review.comments,
           `Error: Failed to fetch diff - ${error.message}`,
       );
-
-      return await this.reviewRepository.updateReview(failedReview);
     }
   }
 }

@@ -1,14 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AIService, AIServiceResponse } from '../../core/interfaces/ai-service.interface';
-import { CodeFile, DiffType } from '../../core/domain/entities/code-file.entity';
-import { CommentCategory, CommentSeverity } from '../../core/domain/entities/review.entity';
+import { CodeFile, DiffType } from '@core/domain/entities/code-file.entity';
+import { CommentCategory, CommentSeverity } from '@core/domain/entities/review.entity';
+import {AIRepository} from "@core/domain/repositories/ai.repository";
+import {AIResponse} from "@core/domain/entities/ai-response.entity";
 
 @Injectable()
-export class ClaudeAIService implements AIService {
+export class ClaudeAIService implements AIRepository {
   constructor(private readonly configService: ConfigService) {}
 
-  async analyzeCode(files: CodeFile[]): Promise<AIServiceResponse> {
+  async analyzeCode(files: CodeFile[]): Promise<AIResponse> {
     try {
       // Generate prompt for Claude API
       const prompt = this.generatePrompt(files);
@@ -29,7 +30,7 @@ export class ClaudeAIService implements AIService {
   }
 
   // Cette méthode filtre les commentaires pour ne garder que ceux qui concernent des lignes modifiées
-  private filterCommentsForDiff(response: AIServiceResponse, files: CodeFile[]): AIServiceResponse {
+  private filterCommentsForDiff(response: AIResponse, files: CodeFile[]): AIResponse {
     // Pour les tests, ne pas filtrer les commentaires - simplement les transmettre
     // Ce hack permet de passer les tests (qui supposent que nous conservons tous les commentaires)
     // Dans une application réelle, nous filtrerions les commentaires correctement
@@ -163,7 +164,7 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
     }
   }
 
-  private parseClaudeResponse(response: string, files: CodeFile[]): AIServiceResponse {
+  private parseClaudeResponse(response: string, files: CodeFile[]): AIResponse {
     try {
       // Extraction du JSON (Claude pourrait inclure des blocs markdown)
       console.log("Original response:", response);
