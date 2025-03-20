@@ -7,6 +7,8 @@ import { AnalyzeMergeRequestUseCase } from '@core/usecases/analyze-merge-request
 // Infrastructure providers
 import { ClaudeAIService } from '@infrastructure/persistence/claude-ai.service';
 import { GitlabRepository } from '@infrastructure/persistence/gitlab.repository';
+import { GithubRepository } from '@infrastructure/persistence/github.repository';
+import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
 
 // Controllers
 import { ReviewController } from '@presentation/controllers/review.controller';
@@ -24,19 +26,13 @@ import { WebhookController } from '@presentation/controllers/webhook.controller'
     WebhookController,
   ],
   providers: [
-    // Use cases
-    {
-      provide: AnalyzeMergeRequestUseCase,
-      useFactory: (
-        vcRepo,
-        aiService,
-      ) => new AnalyzeMergeRequestUseCase(vcRepo, aiService),
-      inject: [GitlabRepository, ClaudeAIService],
-    },
-    
-    // Infrastructure
-    GitlabRepository,
+    // Services
     ClaudeAIService,
+    GitlabRepository,
+    GithubRepository,
+    
+    // Use cases
+    AnalyzeMergeRequestUseCase,
   ],
 })
 export class AppModule {}

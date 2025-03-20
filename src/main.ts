@@ -15,10 +15,10 @@ async function bootstrap() {
 
   // Setup Swagger documentation
   const config = new DocumentBuilder()
-    .setTitle('GitLab Code Review API')
-    .setDescription('API for automated code reviews using AI for GitLab merge requests')
+    .setTitle('Code Review API')
+    .setDescription('API for automated code reviews using AI for GitLab and GitHub merge/pull requests')
     .setVersion('1.0')
-    .addTag('gitlab-review')
+    .addTag('code-review')
     .build();
   
   const document = SwaggerModule.createDocument(app, config);

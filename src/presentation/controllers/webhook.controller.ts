@@ -1,6 +1,6 @@
 import { Controller, Post, Body, Headers, HttpException, HttpStatus } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { ApiOperation, ApiTags, ApiHeader, ApiBody, ApiResponse } from '@nestjs/swagger';
 import { AnalyzeMergeRequestUseCase } from '@core/usecases/analyze-merge-request.usecase';
 
 @ApiTags('webhook')
@@ -12,7 +12,60 @@ export class WebhookController {
   ) {}
 
   @Post('gitlab')
-  @ApiOperation({ summary: 'Handle GitLab webhook events' })
+  @ApiOperation({ 
+    summary: 'Handle GitLab webhook events',
+    description: 'Endpoint for GitLab webhook integration to automatically trigger code reviews on merge request events'
+  })
+  @ApiHeader({
+    name: 'x-gitlab-token',
+    description: 'GitLab webhook secret token for authentication',
+    required: true
+  })
+  @ApiBody({
+    description: 'GitLab webhook payload for merge request events',
+    schema: {
+      type: 'object',
+      required: ['object_kind', 'object_attributes', 'project'],
+      properties: {
+        object_kind: { 
+          type: 'string', 
+          example: 'merge_request',
+          description: 'Type of GitLab event' 
+        },
+        object_attributes: {
+          type: 'object',
+          properties: {
+            id: { type: 'number', example: 42 },
+            iid: { type: 'number', example: 5 },
+            action: { 
+              type: 'string', 
+              example: 'open',
+              description: 'The action performed on the merge request (open, update, close, etc.)'
+            }
+          }
+        },
+        project: {
+          type: 'object',
+          properties: {
+            id: { type: 'number', example: 12345 },
+            name: { type: 'string', example: 'My Project' },
+            path_with_namespace: { type: 'string', example: 'group/project' }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Webhook processed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Review process started' }
+      }
+    }
+  })
+  @ApiResponse({ status: 401, description: 'Unauthorized - Invalid webhook token' })
   async handleGitlabWebhook(
     @Headers('x-gitlab-token') token: string,
     @Body() webhookData: any,
@@ -48,7 +101,60 @@ export class WebhookController {
   }
 
   @Post('github')
-  @ApiOperation({ summary: 'Handle GitHub webhook events' })
+  @ApiOperation({ 
+    summary: 'Handle GitHub webhook events',
+    description: 'Endpoint for GitHub webhook integration to automatically trigger code reviews on pull request events'
+  })
+  @ApiHeader({
+    name: 'x-hub-signature-256',
+    description: 'GitHub webhook signature for request validation',
+    required: true
+  })
+  @ApiBody({
+    description: 'GitHub webhook payload for pull request events',
+    schema: {
+      type: 'object',
+      required: ['action', 'pull_request', 'repository'],
+      properties: {
+        action: { 
+          type: 'string', 
+          example: 'opened', 
+          description: 'The action performed on the pull request (opened, synchronize, closed, etc.)' 
+        },
+        pull_request: {
+          type: 'object',
+          properties: {
+            number: { type: 'number', example: 42 },
+            title: { type: 'string', example: 'Add new feature' },
+            state: { type: 'string', example: 'open' }
+          }
+        },
+        repository: {
+          type: 'object',
+          properties: {
+            full_name: { type: 'string', example: 'owner/repo' },
+            name: { type: 'string', example: 'repo' },
+            owner: { 
+              type: 'object',
+              properties: {
+                login: { type: 'string', example: 'owner' }
+              }
+            }
+          }
+        }
+      }
+    }
+  })
+  @ApiResponse({ 
+    status: 200, 
+    description: 'Webhook processed successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        message: { type: 'string', example: 'Review process started for GitHub PR' }
+      }
+    }
+  })
   async handleGithubWebhook(
     @Headers('x-hub-signature-256') signature: string,
     @Body() webhookData: any,

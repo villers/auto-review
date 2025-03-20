@@ -1,7 +1,7 @@
 {
-  "name": "gitlab-review",
+  "name": "code-review",
   "version": "1.0.0",
-  "description": "AI-powered code review system for GitLab repositories with Claude",
+  "description": "AI-powered code review system for GitLab and GitHub repositories with Claude",
   "main": "dist/main.js",
   "scripts": {
     "build": "nest build",
