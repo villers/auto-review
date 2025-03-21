@@ -6,39 +6,32 @@ import { AIResponse } from "@core/domain/entities/ai-response.entity";
 import { AIAdapter, AIModelConfig } from './ai.adapter';
 
 @Injectable()
-export class ClaudeAIService extends AIAdapter {
+export class OpenAIService extends AIAdapter {
   
-  // Claude model configurations
-  private readonly CLAUDE_MODELS = {
-    OPUS: {
-      name: 'claude-3-opus-20240229',
-      apiEndpoint: 'https://api.anthropic.com/v1/messages',
-      apiVersion: '2023-06-01',
+  // OpenAI model configurations
+  private readonly OPENAI_MODELS = {
+    GPT4: {
+      name: 'gpt-4-turbo',
+      apiEndpoint: 'https://api.openai.com/v1/chat/completions',
+      apiVersion: '2023-05-15',
       temperature: 0.2,
       maxTokens: 4000
     },
-    SONNET: {
-      name: 'claude-3-sonnet-20240229',
-      apiEndpoint: 'https://api.anthropic.com/v1/messages',
-      apiVersion: '2023-06-01',
+    GPT35: {
+      name: 'gpt-3.5-turbo',
+      apiEndpoint: 'https://api.openai.com/v1/chat/completions',
+      apiVersion: '2023-05-15',
       temperature: 0.3,
-      maxTokens: 4000
-    },
-    HAIKU: {
-      name: 'claude-3-haiku-20240307',
-      apiEndpoint: 'https://api.anthropic.com/v1/messages',
-      apiVersion: '2023-06-01',
-      temperature: 0.5,
-      maxTokens: 4000
+      maxTokens: 2000
     }
   };
 
   constructor(configService: ConfigService) {
-    // Use OPUS as default model
+    // Use GPT4 as default model
     super(configService, {
-      name: 'claude-3-opus-20240229',
-      apiEndpoint: 'https://api.anthropic.com/v1/messages',
-      apiVersion: '2023-06-01',
+      name: 'gpt-4-turbo',
+      apiEndpoint: 'https://api.openai.com/v1/chat/completions',
+      apiVersion: '2023-05-15',
       temperature: 0.2,
       maxTokens: 4000
     });
@@ -48,8 +41,8 @@ export class ClaudeAIService extends AIAdapter {
   }
 
   // Helper method to set model by name
-  setModelByName(modelName: 'OPUS' | 'SONNET' | 'HAIKU'): void {
-    this.currentModel = this.CLAUDE_MODELS[modelName];
+  setModelByName(modelName: 'GPT4' | 'GPT35'): void {
+    this.currentModel = this.OPENAI_MODELS[modelName];
   }
 
   protected generatePrompt(files: CodeFile[]): string {
@@ -104,9 +97,9 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
   }
 
   protected async callAPI(prompt: string): Promise<string> {
-    const apiKey = this.configService.get<string>('CLAUDE_API_KEY');
+    const apiKey = this.configService.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
-      throw new Error('CLAUDE_API_KEY not configured');
+      throw new Error('OPENAI_API_KEY not configured');
     }
 
     try {
@@ -116,14 +109,15 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-api-key': apiKey,
-          'anthropic-version': model.apiVersion
+          'Authorization': `Bearer ${apiKey}`,
+          'OpenAI-Beta': 'assistants=v1'
         },
         body: JSON.stringify({
           model: model.name,
           max_tokens: model.maxTokens || 4000,
           temperature: model.temperature || 0.2,
           messages: [
+            { role: 'system', content: 'You are a code review assistant that outputs only valid JSON.' },
             { role: 'user', content: prompt }
           ]
         })
@@ -131,47 +125,41 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(`Claude API Error: ${JSON.stringify(errorData)}`);
+        throw new Error(`OpenAI API Error: ${JSON.stringify(errorData)}`);
       }
 
       const data = await response.json();
-      return data.content[0].text;
+      return data.choices[0].message.content;
     } catch (error) {
-      console.error('Error calling Claude API:', error);
-      throw new Error(`Failed to call Claude API: ${error.message}`);
+      console.error('Error calling OpenAI API:', error);
+      throw new Error(`Failed to call OpenAI API: ${error.message}`);
     }
   }
 
   protected parseResponse(response: string, files: CodeFile[]): AIResponse {
     try {
-      // Extraction du JSON (Claude pourrait inclure des blocs markdown)
-      console.log("Original response:", response);
+      // Clean up the response
+      let jsonText = response;
+      
+      // Remove any markdown code block indicators
+      jsonText = jsonText.replace(/```json\s*/g, '');
+      jsonText = jsonText.replace(/```\s*$/g, '');
       
       // Suppression de tout texte avant le premier {
-      let jsonText = response.substring(response.indexOf('{'));
+      const firstBraceIndex = jsonText.indexOf('{');
+      if (firstBraceIndex > 0) {
+        jsonText = jsonText.substring(firstBraceIndex);
+      }
       
       // Suppression de tout texte après le dernier }
       const lastBraceIndex = jsonText.lastIndexOf('}');
-      if (lastBraceIndex !== -1) {
+      if (lastBraceIndex !== -1 && lastBraceIndex < jsonText.length - 1) {
         jsonText = jsonText.substring(0, lastBraceIndex + 1);
       }
       
-      // Nettoyer le JSON des échappements problématiques
-      const cleanedJson = this.fixJsonString(jsonText);
-      console.log("Cleaned JSON:", cleanedJson);
+      console.log("Cleaned JSON:", jsonText);
       
-      let parsedResponse;
-      try {
-        parsedResponse = JSON.parse(cleanedJson);
-      } catch (parseError) {
-        console.error('JSON Parse error:', parseError);
-        console.error('Problem JSON:', cleanedJson);
-        
-        // Dans le cas où le nettoyage standard échoue, essayer une approche plus brute
-        const manuallyRepairedJson = this.manualJsonRepair(cleanedJson);
-        console.log("Manually repaired JSON:", manuallyRepairedJson);
-        parsedResponse = JSON.parse(manuallyRepairedJson);
-      }
+      const parsedResponse = JSON.parse(jsonText);
       
       // Validation et nettoyage de la réponse
       const comments = Array.isArray(parsedResponse.comments) 
@@ -191,8 +179,7 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
         summary
       };
     } catch (error) {
-      console.error('Error parsing Claude response:', error);
-      // Throw the error with the proper message format for tests
+      console.error('Error parsing OpenAI response:', error);
       throw new Error(`Error parsing AI response: ${error.message}`);
     }
   }
@@ -200,8 +187,9 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
   protected filterCommentsForDiff(response: AIResponse, files: CodeFile[]): AIResponse {
     const modifiedLines = new Set<string>();
     
-    // For tests, consider all lines as modified
+    // Build a set of modified lines
     files.forEach(file => {
+      // Consider lines mentioned in comments
       response.comments.forEach(comment => {
         if (comment.filePath === file.path) {
           modifiedLines.add(`${file.path}:${comment.lineNumber}`);
@@ -216,82 +204,16 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
       });
     });
     
-    console.log("Modified lines:", Array.from(modifiedLines));
-    
     // Filter comments to only keep those that concern modified lines
     const filteredComments = response.comments.filter(comment => {
       const key = `${comment.filePath}:${comment.lineNumber}`;
-      const isInDiff = modifiedLines.has(key);
-      
-      if (!isInDiff) {
-        console.log(`Skipping comment for ${key} - not in diff`);
-      }
-      
-      return isInDiff;
+      return modifiedLines.has(key);
     });
-    
-    console.log(`Filtered ${response.comments.length} comments down to ${filteredComments.length}`);
     
     return {
       comments: filteredComments,
       summary: response.summary
     };
-  }
-
-  private fixJsonString(jsonStr: string): string {
-    // Handle special characters like \u000a that cause problems
-    let cleaned = jsonStr;
-    
-    // Literally replace \u000a sequences with line breaks
-    cleaned = cleaned.replace(/\\u000a/g, ' ');
-    
-    // Literally replace \n sequences with spaces
-    cleaned = cleaned.replace(/\\n/g, ' ');
-    
-    // Remove actual control characters (0x00-0x1F except space, tab, CR and LF)
-    cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
-    
-    return cleaned;
-  }
-
-  private manualJsonRepair(jsonStr: string): string {
-    // Check if the text contains "This is not valid JSON" for tests
-    if (jsonStr.includes("This is not valid JSON")) {
-      throw new Error("Error parsing AI response: Invalid JSON format");
-    }
-  
-    // Brute force approach: rebuild a minimal valid JSON
-    try {
-      // Extract comments and summary manually
-      const comments = [];
-      const commentRegex = /"filePath"\s*:\s*"([^"]+)"\s*,\s*"lineNumber"\s*:\s*(\d+)\s*,\s*"content"\s*:\s*"([^"]+)"\s*,\s*"category"\s*:\s*"([^"]+)"\s*,\s*"severity"\s*:\s*"([^"]+)"/g;
-      
-      let match;
-      while ((match = commentRegex.exec(jsonStr)) !== null) {
-        comments.push({
-          filePath: match[1],
-          lineNumber: parseInt(match[2]),
-          content: match[3],
-          category: match[4],
-          severity: match[5]
-        });
-      }
-      
-      // Extract the summary
-      const summaryRegex = /"summary"\s*:\s*"([^"]*)"/;
-      const summaryMatch = jsonStr.match(summaryRegex);
-      const summary = summaryMatch ? summaryMatch[1] : "Summary extraction failed";
-      
-      // Rebuild a clean JSON
-      return JSON.stringify({
-        comments: comments,
-        summary: summary
-      });
-    } catch (error) {
-      console.error("Error in manual JSON repair:", error);
-      // Last chance - return a minimal valid JSON
-      return '{"comments":[],"summary":"Error in JSON parsing"}';
-    }
   }
 
   private validateCategory(category: string): CommentCategory {

@@ -1,12 +1,15 @@
 import { v4 as uuidv4 } from 'uuid';
+import { Inject, Injectable } from '@nestjs/common';
 import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
 import { Review, ReviewComment, ReviewStatus } from '@core/domain/entities/review.entity';
-import {AIRepository} from "@core/domain/repositories/ai.repository";
+import { AIRepository } from "@core/domain/repositories/ai.repository";
+import { AI_REPOSITORY_TOKEN, VERSION_CONTROL_REPOSITORY_TOKEN } from '@core/domain/repositories/injection-tokens';
 
+@Injectable()
 export class AnalyzeMergeRequestUseCase {
   constructor(
-      private readonly versionControlRepository: VersionControlRepository,
-      private readonly aiService: AIRepository,
+      @Inject(VERSION_CONTROL_REPOSITORY_TOKEN) private readonly versionControlRepository: VersionControlRepository,
+      @Inject(AI_REPOSITORY_TOKEN) private readonly aiService: AIRepository,
   ) {}
 
   async execute(

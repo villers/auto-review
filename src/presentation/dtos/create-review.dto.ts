@@ -1,9 +1,24 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsNotEmpty, IsNumber, IsString } from 'class-validator';
+import { IsEnum, IsNotEmpty, IsNumber, IsString, IsOptional } from 'class-validator';
 
 export enum VcsType {
   GITLAB = 'gitlab',
   GITHUB = 'github'
+}
+
+export enum AIProviderType {
+  CLAUDE = 'claude',
+  OPENAI = 'openai'
+}
+
+export enum AIModelType {
+  // Claude models
+  CLAUDE_OPUS = 'claude_opus',
+  CLAUDE_SONNET = 'claude_sonnet',
+  CLAUDE_HAIKU = 'claude_haiku',
+  // OpenAI models
+  GPT4 = 'gpt4',
+  GPT35 = 'gpt35'
 }
 
 export class CreateReviewDto {
@@ -41,4 +56,29 @@ export class CreateReviewDto {
     message: 'vcsType must be either "gitlab" or "github"'
   })
   vcsType: VcsType = VcsType.GITLAB;
+
+  @ApiProperty({
+    description: 'The AI provider to use (claude or openai)',
+    enum: AIProviderType,
+    example: 'claude',
+    default: AIProviderType.CLAUDE,
+    required: false
+  })
+  @IsOptional()
+  @IsEnum(AIProviderType, {
+    message: 'aiProvider must be either "claude" or "openai"'
+  })
+  aiProvider?: AIProviderType = AIProviderType.CLAUDE;
+
+  @ApiProperty({
+    description: 'The AI model to use',
+    enum: AIModelType,
+    example: 'claude_opus',
+    required: false
+  })
+  @IsOptional()
+  @IsEnum(AIModelType, {
+    message: 'aiModel must be one of the supported models'
+  })
+  aiModel?: AIModelType;
 }
