@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
 import { CodeFile, DiffType, FileDiff } from '@core/domain/entities/code-file.entity';
+import { VersionControlAdapter } from './version-control.adapter';
 
 // Types for GitLab API responses
 interface DiffRefs {
@@ -34,9 +34,7 @@ interface Note {
 type FileStatus = 'added' | 'deleted' | 'renamed' | 'modified';
 
 @Injectable()
-export class GitlabRepository implements VersionControlRepository {
-  private readonly apiBaseUrl: string;
-  private readonly apiToken: string;
+export class GitlabRepository extends VersionControlAdapter {
   private diffReferences: {
     baseSha: string | null;
     startSha: string | null;
@@ -47,9 +45,17 @@ export class GitlabRepository implements VersionControlRepository {
     headSha: null
   };
 
-  constructor(private readonly configService: ConfigService) {
-    this.apiBaseUrl = this.configService.get<string>('GITLAB_API_URL', 'https://gitlab.com/api/v4');
-    this.apiToken = this.configService.get<string>('GITLAB_API_TOKEN', '');
+  constructor(configService: ConfigService) {
+    super(
+      configService,
+      'GITLAB_API_URL',
+      'GITLAB_API_TOKEN',
+      'https://gitlab.com/api/v4'
+    );
+  }
+
+  protected getAuthHeaders(): Record<string, string> {
+    return { 'PRIVATE-TOKEN': this.apiToken };
   }
 
   async getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
@@ -68,10 +74,6 @@ export class GitlabRepository implements VersionControlRepository {
       console.log(`Failed to get MR files: ${error.message}`);
       throw new Error(`Failed to get MR files: ${error.message}`);
     }
-  }
-
-  async getMergeRequestDiff(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
-    return this.getMergeRequestFiles(projectId, mergeRequestId);
   }
 
   async getFileContent(projectId: string, filePath: string, ref: string = 'main'): Promise<string> {
@@ -195,12 +197,7 @@ export class GitlabRepository implements VersionControlRepository {
 
   private identifyAiNotes(notes: Note[]): number[] {
     return notes
-      .filter(note => note.body && (
-        note.body.includes('AI Code Review') || 
-        note.body.includes('**Code Review**') || 
-        note.body.includes('Code Review:') ||
-        note.body.includes('**Code Review**:')
-      ))
+      .filter(note => this.isAIGeneratedComment(note.body))
       .map(note => note.id);
   }
 
@@ -309,7 +306,7 @@ export class GitlabRepository implements VersionControlRepository {
           filePath,
           fileContent,
           this.detectLanguage(filePath),
-          this.parseDiff(file.diff),
+          this.parseDiffContent(file.diff), // Utilise la méthode commune
         )
       );
     }
@@ -349,71 +346,5 @@ export class GitlabRepository implements VersionControlRepository {
       console.warn(`Could not fetch content for ${file.new_path}, using empty content: ${error.message}`);
       return ''; 
     }
-  }
-
-  private async apiRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
-    const headers = {
-      'PRIVATE-TOKEN': this.apiToken,
-      'Content-Type': 'application/json',
-      ...options.headers
-    };
-
-    return fetch(`${this.apiBaseUrl}/${endpoint}`, {
-      ...options,
-      headers
-    });
-  }
-
-  private parseDiff(diffContent: string): FileDiff[] {
-    if (!diffContent) {
-      return [];
-    }
-
-    const changes: FileDiff[] = [];
-    const lines = diffContent.split('\n');
-    let currentLineOld = null;
-    let currentLineNew = null;
-
-    for (const line of lines) {
-      if (line.startsWith('@@')) {
-        const match = line.match(/@@ -(\d+),?\d* \+(\d+),?\d* @@/);
-        if (match) {
-          currentLineOld = parseInt(match[1], 10);
-          currentLineNew = parseInt(match[2], 10);
-        }
-        continue;
-      }
-
-      if (line.startsWith('+') && !line.startsWith('+++')) {
-        changes.push(new FileDiff(currentLineNew, line.substring(1), DiffType.ADDED));
-        if (currentLineNew !== null) currentLineNew++;
-      } else if (line.startsWith('-') && !line.startsWith('---')) {
-        changes.push(new FileDiff(null, line.substring(1), DiffType.DELETED));
-        if (currentLineOld !== null) currentLineOld++;
-      } else if (!line.startsWith('@@') && !line.startsWith('---') && !line.startsWith('+++')) {
-        changes.push(new FileDiff(currentLineNew, line, DiffType.UNCHANGED));
-        if (currentLineOld !== null) currentLineOld++;
-        if (currentLineNew !== null) currentLineNew++;
-      }
-    }
-
-    return changes;
-  }
-
-  private detectLanguage(filePath: string): string {
-    const extension = filePath.split('.').pop()?.toLowerCase();
-    
-    const languageMap: { [key: string]: string } = {
-      'js': 'JavaScript', 'ts': 'TypeScript', 'jsx': 'JavaScript (React)',
-      'tsx': 'TypeScript (React)', 'py': 'Python', 'java': 'Java',
-      'rb': 'Ruby', 'php': 'PHP', 'go': 'Go', 'cs': 'C#',
-      'cpp': 'C++', 'c': 'C', 'rs': 'Rust', 'swift': 'Swift',
-      'kt': 'Kotlin', 'sh': 'Shell', 'yml': 'YAML', 'yaml': 'YAML',
-      'json': 'JSON', 'md': 'Markdown', 'sql': 'SQL', 'tf': 'Terraform',
-      'html': 'HTML', 'css': 'CSS', 'scss': 'SCSS', 'sass': 'Sass',
-      'less': 'Less',
-    };
-
-    return extension && languageMap[extension] ? languageMap[extension] : 'Unknown';
   }
 }
