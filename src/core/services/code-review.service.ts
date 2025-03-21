@@ -15,7 +15,8 @@ export class CodeReviewService {
     projectId: string,
     mergeRequestId: number,
     userId: string,
-    vcsService?: VcsService
+    vcsService?: VcsService,
+    postSummary: boolean = false
   ): Promise<Review> {
     // Utiliser le service VCS fourni ou le service par défaut
     const service = vcsService || this.defaultVcsService;
@@ -58,8 +59,10 @@ export class CodeReviewService {
         );
       }
       
-      // 6. Soumettre le résumé
-      await service.submitReviewSummary(projectId, mergeRequestId, aiResponse.summary);
+      // 6. Soumettre le résumé uniquement si demandé
+      if (postSummary && aiResponse.summary) {
+        await service.submitReviewSummary(projectId, mergeRequestId, aiResponse.summary);
+      }
       
       // 7. Créer et retourner l'objet Review
       return {

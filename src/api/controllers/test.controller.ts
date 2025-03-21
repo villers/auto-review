@@ -15,6 +15,9 @@ class TestReviewDto {
   
   // Optionnel: ID de l'utilisateur demandant la revue
   userId?: string;
+  
+  // Optionnel: Afficher le résumé ou non
+  postSummary?: boolean;
 }
 
 /**
@@ -44,7 +47,8 @@ export class TestController {
           body: {
             projectId: 'ID du projet (ex: 12345)',
             mergeRequestId: 'Numéro de la merge request (ex: 42)',
-            userId: 'ID utilisateur (optionnel)'
+            userId: 'ID utilisateur (optionnel)',
+            postSummary: 'Afficher le résumé (optionnel, défaut: false)'
           }
         },
         {
@@ -54,7 +58,8 @@ export class TestController {
           body: {
             projectId: 'Nom du repository (ex: "owner/repo")',
             mergeRequestId: 'Numéro de la pull request (ex: 42)',
-            userId: 'ID utilisateur (optionnel)'
+            userId: 'ID utilisateur (optionnel)',
+            postSummary: 'Afficher le résumé (optionnel, défaut: false)'
           }
         },
         {
@@ -64,6 +69,10 @@ export class TestController {
           params: {
             projectId: 'ID du projet',
             mergeRequestId: 'Numéro de la merge request'
+          },
+          query: {
+            userId: 'ID utilisateur (optionnel)',
+            postSummary: 'true/false pour afficher le résumé (optionnel)'
           }
         },
         {
@@ -74,6 +83,10 @@ export class TestController {
             owner: 'Propriétaire du repository',
             repo: 'Nom du repository',
             pullRequestId: 'Numéro de la pull request'
+          },
+          query: {
+            userId: 'ID utilisateur (optionnel)',
+            postSummary: 'true/false pour afficher le résumé (optionnel)'
           }
         }
       ]
@@ -89,12 +102,14 @@ export class TestController {
       console.log(`[TEST] Reviewing GitLab merge request ${testDto.mergeRequestId} for project ${testDto.projectId}`);
       
       const userId = testDto.userId || 'test-user';
+      const postSummary = testDto.postSummary || false;
       
       const review = await this.codeReviewService.reviewMergeRequest(
         testDto.projectId,
         testDto.mergeRequestId,
         userId,
-        this.gitlabService
+        this.gitlabService,
+        postSummary
       );
       
       return {
@@ -104,7 +119,8 @@ export class TestController {
           id: review.id,
           status: review.status,
           commentCount: review.comments.length,
-          summary: review.summary
+          summary: review.summary,
+          summaryPosted: postSummary
         }
       };
     } catch (error) {
@@ -124,12 +140,14 @@ export class TestController {
       console.log(`[TEST] Reviewing GitHub pull request ${testDto.mergeRequestId} for repository ${testDto.projectId}`);
       
       const userId = testDto.userId || 'test-user';
+      const postSummary = testDto.postSummary || false;
       
       const review = await this.codeReviewService.reviewMergeRequest(
         testDto.projectId,
         testDto.mergeRequestId,
         userId,
-        this.githubService
+        this.githubService,
+        postSummary
       );
       
       return {
@@ -139,7 +157,8 @@ export class TestController {
           id: review.id,
           status: review.status,
           commentCount: review.comments.length,
-          summary: review.summary
+          summary: review.summary,
+          summaryPosted: postSummary
         }
       };
     } catch (error) {
@@ -157,12 +176,14 @@ export class TestController {
   async testGitlabReviewGet(
     @Param('projectId') projectId: string,
     @Param('mergeRequestId') mergeRequestId: number,
-    @Query('userId') userId?: string
+    @Query('userId') userId?: string,
+    @Query('postSummary') postSummary?: string
   ) {
     const testDto: TestReviewDto = {
       projectId,
       mergeRequestId: Number(mergeRequestId),
-      userId: userId || 'test-user'
+      userId: userId || 'test-user',
+      postSummary: postSummary === 'true'
     };
     
     return this.testGitlabReview(testDto);
@@ -176,12 +197,14 @@ export class TestController {
     @Param('owner') owner: string,
     @Param('repo') repo: string,
     @Param('pullRequestId') pullRequestId: number,
-    @Query('userId') userId?: string
+    @Query('userId') userId?: string,
+    @Query('postSummary') postSummary?: string
   ) {
     const testDto: TestReviewDto = {
       projectId: `${owner}/${repo}`,
       mergeRequestId: Number(pullRequestId),
-      userId: userId || 'test-user'
+      userId: userId || 'test-user',
+      postSummary: postSummary === 'true'
     };
     
     return this.testGithubReview(testDto);

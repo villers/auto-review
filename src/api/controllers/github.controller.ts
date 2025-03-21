@@ -66,11 +66,15 @@ export class GithubController {
       // Lancer la revue de code avec le service GitHub
       console.log(`Processing pull request #${event.pull_request.number} for repository ${event.repository.full_name}`);
       
+      // Ne pas afficher le résumé par défaut (false)
+      const postSummary = this.configService.get<boolean>('POST_SUMMARY', false);
+      
       const review = await this.codeReviewService.reviewMergeRequest(
         event.repository.full_name,
         event.pull_request.number,
         event.sender.id.toString(),
-        this.githubService // Passer explicitement le service GitHub
+        this.githubService,
+        postSummary
       );
 
       return {

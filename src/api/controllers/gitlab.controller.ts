@@ -67,11 +67,15 @@ export class GitlabController {
       // Lancer la revue de code avec le service GitLab
       console.log(`Processing merge request ${event.object_attributes.iid} for project ${event.project.path_with_namespace}`);
       
+      // Ne pas afficher le résumé par défaut (false)
+      const postSummary = this.configService.get<boolean>('POST_SUMMARY', false);
+      
       const review = await this.codeReviewService.reviewMergeRequest(
         event.project.id.toString(), 
         event.object_attributes.iid,
         event.user.id.toString(),
-        this.gitlabService // Passer explicitement le service GitLab
+        this.gitlabService,
+        postSummary
       );
 
       return {
