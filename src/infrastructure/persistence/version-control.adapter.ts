@@ -1,43 +1,24 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
 import { CodeFile, DiffType, FileDiff } from '@core/domain/entities/code-file.entity';
 
 /**
- * Base class for version control adapters that implements common functionality
+ * Configuration for API connection
+ */
+export interface ApiConfig {
+  baseUrl: string;
+  authHeaders: Record<string, string>;
+}
+
+/**
+ * Utility service providing common functionality for version control adapters
  */
 @Injectable()
-export abstract class VersionControlAdapter implements VersionControlRepository {
-  protected readonly apiBaseUrl: string;
-  protected readonly apiToken: string;
-
-  constructor(
-    protected readonly configService: ConfigService,
-    baseUrlConfigKey: string,
-    tokenConfigKey: string,
-    defaultBaseUrl: string
-  ) {
-    this.apiBaseUrl = this.configService.get<string>(baseUrlConfigKey, defaultBaseUrl);
-    this.apiToken = this.configService.get<string>(tokenConfigKey, '');
-  }
-
-  abstract getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]>;
-  
-  async getMergeRequestDiff(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
-    return this.getMergeRequestFiles(projectId, mergeRequestId);
-  }
-  
-  abstract getFileContent(projectId: string, filePath: string, ref?: string): Promise<string>;
-  abstract clearPreviousComments(projectId: string, mergeRequestId: number): Promise<void>;
-  abstract submitComment(
-    projectId: string,
-    mergeRequestId: number,
-    comment: { filePath: string; lineNumber: number; content: string }
-  ): Promise<boolean>;
-  abstract submitReviewSummary(projectId: string, mergeRequestId: number, summary: string): Promise<boolean>;
+export class VersionControlService {
+  constructor(protected readonly configService: ConfigService) {}
 
   // Common utility methods
-  protected detectLanguage(filePath: string): string {
+  detectLanguage(filePath: string): string {
     const extension = filePath.split('.').pop()?.toLowerCase();
     
     const languageMap: { [key: string]: string } = {
@@ -55,21 +36,25 @@ export abstract class VersionControlAdapter implements VersionControlRepository 
   }
 
   // Helper method for making API requests
-  protected async apiRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
+  async apiRequest(
+    apiConfig: ApiConfig,
+    endpoint: string, 
+    options: RequestInit = {}
+  ): Promise<Response> {
     const headers = {
-      ...this.getAuthHeaders(),
+      ...apiConfig.authHeaders,
       'Content-Type': 'application/json',
       ...options.headers
     };
 
-    return fetch(`${this.apiBaseUrl}/${endpoint}`, {
+    return fetch(`${apiConfig.baseUrl}/${endpoint}`, {
       ...options,
       headers
     });
   }
 
   // Common patterns used for identifying AI-generated comments
-  protected isAIGeneratedComment(commentBody: string): boolean {
+  isAIGeneratedComment(commentBody: string): boolean {
     if (!commentBody) return false;
     
     const aiPatterns = [
@@ -87,7 +72,7 @@ export abstract class VersionControlAdapter implements VersionControlRepository 
    * Parse diff/patch content into FileDiff objects
    * This method works with both GitLab and GitHub diff/patch formats
    */
-  protected parseDiffContent(diffContent: string): FileDiff[] {
+  parseDiffContent(diffContent: string): FileDiff[] {
     if (!diffContent) {
       return [];
     }
@@ -149,7 +134,4 @@ export abstract class VersionControlAdapter implements VersionControlRepository 
 
     return changes;
   }
-
-  // Abstract method to get auth headers for the specific VCS
-  protected abstract getAuthHeaders(): Record<string, string>;
 }

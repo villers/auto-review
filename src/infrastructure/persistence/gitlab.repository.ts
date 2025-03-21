@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CodeFile, DiffType, FileDiff } from '@core/domain/entities/code-file.entity';
-import { VersionControlAdapter } from './version-control.adapter';
+import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
+import { CodeFile, FileDiff } from '@core/domain/entities/code-file.entity';
+import { ApiConfig, VersionControlService } from './version-control.adapter';
 
 // Types for GitLab API responses
 interface DiffRefs {
@@ -34,7 +35,8 @@ interface Note {
 type FileStatus = 'added' | 'deleted' | 'renamed' | 'modified';
 
 @Injectable()
-export class GitlabRepository extends VersionControlAdapter {
+export class GitlabRepository implements VersionControlRepository {
+  private readonly apiConfig: ApiConfig;
   private diffReferences: {
     baseSha: string | null;
     startSha: string | null;
@@ -45,20 +47,21 @@ export class GitlabRepository extends VersionControlAdapter {
     headSha: null
   };
 
-  constructor(configService: ConfigService) {
-    super(
-      configService,
-      'GITLAB_API_URL',
-      'GITLAB_API_TOKEN',
-      'https://gitlab.com/api/v4'
-    );
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly vcService: VersionControlService
+  ) {
+    // Set up API configuration
+    const baseUrl = this.configService.get<string>('GITLAB_API_URL', 'https://gitlab.com/api/v4');
+    const token = this.configService.get<string>('GITLAB_API_TOKEN', '');
+
+    this.apiConfig = {
+      baseUrl,
+      authHeaders: { 'PRIVATE-TOKEN': token }
+    };
   }
 
-  protected getAuthHeaders(): Record<string, string> {
-    return { 'PRIVATE-TOKEN': this.apiToken };
-  }
-
-  async getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
+  async getMergeRequestDiff(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
     try {
       const mrChangesData = await this.fetchMergeRequestChanges(projectId, mergeRequestId);
       this.storeDiffReferences(mrChangesData.diff_refs);
@@ -78,7 +81,8 @@ export class GitlabRepository extends VersionControlAdapter {
 
   async getFileContent(projectId: string, filePath: string, ref: string = 'main'): Promise<string> {
     try {
-      const response = await this.apiRequest(
+      const response = await this.vcService.apiRequest(
+        this.apiConfig,
         `projects/${encodeURIComponent(projectId)}/repository/files/${encodeURIComponent(filePath)}/raw?ref=${ref}`
       );
 
@@ -147,7 +151,8 @@ export class GitlabRepository extends VersionControlAdapter {
 
   async submitReviewSummary(projectId: string, mergeRequestId: number, summary: string): Promise<boolean> {
     try {
-      const response = await this.apiRequest(
+      const response = await this.vcService.apiRequest(
+        this.apiConfig,
         `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes`,
         {
           method: 'POST',
@@ -169,7 +174,8 @@ export class GitlabRepository extends VersionControlAdapter {
     projectId: string, 
     mergeRequestId: number
   ): Promise<MergeRequestChanges> {
-    const response = await this.apiRequest(
+    const response = await this.vcService.apiRequest(
+      this.apiConfig,
       `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/changes`
     );
 
@@ -184,7 +190,8 @@ export class GitlabRepository extends VersionControlAdapter {
     projectId: string, 
     mergeRequestId: number
   ): Promise<Note[]> {
-    const response = await this.apiRequest(
+    const response = await this.vcService.apiRequest(
+      this.apiConfig,
       `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes?per_page=100`
     );
 
@@ -197,7 +204,7 @@ export class GitlabRepository extends VersionControlAdapter {
 
   private identifyAiNotes(notes: Note[]): number[] {
     return notes
-      .filter(note => this.isAIGeneratedComment(note.body))
+      .filter(note => this.vcService.isAIGeneratedComment(note.body))
       .map(note => note.id);
   }
 
@@ -208,7 +215,8 @@ export class GitlabRepository extends VersionControlAdapter {
   ): Promise<void> {
     for (const noteId of noteIds) {
       try {
-        const deleteResponse = await this.apiRequest(
+        const deleteResponse = await this.vcService.apiRequest(
+          this.apiConfig,
           `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes/${noteId}`,
           { method: 'DELETE' }
         );
@@ -242,7 +250,8 @@ export class GitlabRepository extends VersionControlAdapter {
       position.old_line = comment.lineNumber;
     }
 
-    const response = await this.apiRequest(
+    const response = await this.vcService.apiRequest(
+      this.apiConfig,
       `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/discussions`,
       {
         method: 'POST',
@@ -261,7 +270,8 @@ export class GitlabRepository extends VersionControlAdapter {
     mergeRequestId: number,
     comment: { filePath: string; lineNumber: number; content: string }
   ): Promise<boolean> {
-    const noteResponse = await this.apiRequest(
+    const noteResponse = await this.vcService.apiRequest(
+      this.apiConfig,
       `projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes`,
       {
         method: 'POST',
@@ -305,8 +315,8 @@ export class GitlabRepository extends VersionControlAdapter {
         new CodeFile(
           filePath,
           fileContent,
-          this.detectLanguage(filePath),
-          this.parseDiffContent(file.diff), // Utilise la méthode commune
+          this.vcService.detectLanguage(filePath),
+          this.vcService.parseDiffContent(file.diff),
         )
       );
     }

@@ -9,6 +9,7 @@ import { ClaudeAIService } from '@infrastructure/persistence/claude-ai.service';
 import { GitlabRepository } from '@infrastructure/persistence/gitlab.repository';
 import { GithubRepository } from '@infrastructure/persistence/github.repository';
 import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
+import { VersionControlService } from '@infrastructure/persistence/version-control.adapter';
 
 // Controllers
 import { ReviewController } from '@presentation/controllers/review.controller';
@@ -28,6 +29,7 @@ import { WebhookController } from '@presentation/controllers/webhook.controller'
   providers: [
     // Services
     ClaudeAIService,
+    VersionControlService, // Added shared service
     GitlabRepository,
     GithubRepository,
     

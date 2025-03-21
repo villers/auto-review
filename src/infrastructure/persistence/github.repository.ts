@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { CodeFile, DiffType, FileDiff } from '@core/domain/entities/code-file.entity';
-import { VersionControlAdapter } from './version-control.adapter';
+import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
+import { CodeFile } from '@core/domain/entities/code-file.entity';
+import { ApiConfig, VersionControlService } from './version-control.adapter';
 
 // Types for GitHub API responses
 interface PullRequestData {
@@ -23,27 +24,29 @@ interface GithubComment {
 }
 
 @Injectable()
-export class GithubRepository extends VersionControlAdapter {
+export class GithubRepository implements VersionControlRepository {
+  private readonly apiConfig: ApiConfig;
   private commitSha: string | null = null;
 
-  constructor(configService: ConfigService) {
-    super(
-      configService,
-      'GITHUB_API_URL',
-      'GITHUB_API_TOKEN',
-      'https://api.github.com'
-    );
-  }
-
-  protected getAuthHeaders(): Record<string, string> {
-    return {
-      'Authorization': `token ${this.apiToken}`,
-      'Accept': 'application/vnd.github.v3+json',
-      'X-GitHub-Api-Version': '2022-11-28'
+  constructor(
+    private readonly configService: ConfigService,
+    private readonly vcService: VersionControlService
+  ) {
+    // Set up API configuration
+    const baseUrl = this.configService.get<string>('GITHUB_API_URL', 'https://api.github.com');
+    const token = this.configService.get<string>('GITHUB_API_TOKEN', '');
+    
+    this.apiConfig = {
+      baseUrl,
+      authHeaders: {
+        'Authorization': `token ${token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'X-GitHub-Api-Version': '2022-11-28'
+      }
     };
   }
 
-  async getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
+  async getMergeRequestDiff(projectId: string, mergeRequestId: number): Promise<CodeFile[]> {
     try {
       // In GitHub, projectId is in format 'owner/repo' and mergeRequestId is the PR number
       const [owner, repo] = this.parseProjectId(projectId);
@@ -157,6 +160,14 @@ export class GithubRepository extends VersionControlAdapter {
   }
 
   // Private helper methods
+  private async apiRequest(endpoint: string, options: RequestInit = {}): Promise<Response> {
+    return this.vcService.apiRequest(
+      this.apiConfig,
+      endpoint,
+      options
+    );
+  }
+
   private parseProjectId(projectId: string): [string, string] {
     const parts = projectId.split('/');
     if (parts.length !== 2) {
@@ -195,8 +206,8 @@ export class GithubRepository extends VersionControlAdapter {
       }
       
       const fileContent = await this.getFileContent(projectId, file.filename, this.commitSha || 'main');
-      const language = this.detectLanguage(file.filename);
-      const changes = this.parseDiffContent(file.patch || ''); // Utilise la méthode commune
+      const language = this.vcService.detectLanguage(file.filename);
+      const changes = this.vcService.parseDiffContent(file.patch || '');
       
       processedFiles.push(
         new CodeFile(
@@ -224,7 +235,7 @@ export class GithubRepository extends VersionControlAdapter {
     const comments: GithubComment[] = await commentsResponse.json();
     
     // Filter for AI-generated comments
-    const aiComments = comments.filter(comment => this.isAIGeneratedComment(comment.body));
+    const aiComments = comments.filter(comment => this.vcService.isAIGeneratedComment(comment.body));
     
     console.log(`Found ${aiComments.length} AI-generated issue comments to delete`);
     
@@ -259,7 +270,7 @@ export class GithubRepository extends VersionControlAdapter {
     
     // Filter for AI-generated review comments
     const aiReviewComments = reviewComments.filter(
-      comment => this.isAIGeneratedComment(comment.body)
+      comment => this.vcService.isAIGeneratedComment(comment.body)
     );
     
     console.log(`Found ${aiReviewComments.length} AI-generated review comments to delete`);
