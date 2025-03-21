@@ -150,10 +150,6 @@ Sois strict sur le format JSON, les clés doivent être exactement comme dans l'
         const file = files.find(f => f.path === comment.filePath);
         if (!file) continue;
         
-        // Vérifier que la ligne est dans les diffs (optionnel, désactivé pour l'instant)
-        // const isDiffLine = file.diffs.some(d => d.lineNumber === comment.lineNumber);
-        // if (!isDiffLine) continue;
-        
         // Convertir la catégorie
         let category: CommentCategory;
         switch (comment.category.toLowerCase()) {
