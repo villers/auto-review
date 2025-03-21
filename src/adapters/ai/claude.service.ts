@@ -14,6 +14,18 @@ interface ClaudeResponse {
   }[];
 }
 
+interface CodeReviewResponse {
+  comments: {
+    filePath: string;
+    lineNumber: number;
+    category: string;
+    severity: string;
+    problem: string;
+    suggestion: string;
+  }[];
+  summary: string;
+}
+
 @Injectable()
 export class ClaudeService implements AiService {
   private readonly apiKey: string;
@@ -56,8 +68,8 @@ export class ClaudeService implements AiService {
       // Extraire la réponse
       const assistantMessage = response.data.content[0].text;
       
-      // Analyser la réponse pour extraire les commentaires et le résumé
-      return this.parseResponse(assistantMessage, files);
+      // Analyser la réponse JSON pour extraire les commentaires et le résumé
+      return this.parseJsonResponse(assistantMessage, files);
     } catch (error) {
       console.error(`Error calling Claude API: ${error.message}`);
       throw new Error(`Failed to analyze code with Claude: ${error.message}`);
@@ -86,7 +98,7 @@ Voici ce qui a été modifié:\n\n`;
       }
     }
     
-    prompt += `Pour chaque problème que tu trouves, indique:
+    prompt += `Pour chaque problème que tu trouves dans les diff, indique:
 1. Le fichier concerné
 2. Le numéro de ligne
 3. La catégorie du problème (bug, sécurité, performance, style, maintenance)
@@ -94,87 +106,93 @@ Voici ce qui a été modifié:\n\n`;
 5. Une description du problème
 6. Une suggestion d'amélioration
 
-À la fin, donne un résumé global de la qualité du code et des principales améliorations à apporter.
+IMPORTANT: Réponds uniquement avec un objet JSON valide ayant le format suivant, sans aucun texte avant ou après:
+{
+  "comments": [
+    {
+      "filePath": "chemin/vers/fichier.ext",
+      "lineNumber": 42,
+      "category": "sécurité",
+      "severity": "critique",
+      "problem": "Description du problème détaillée",
+      "suggestion": "Suggestion d'amélioration détaillée"
+    },
+    // Autres commentaires...
+  ],
+  "summary": "Résumé global de la qualité du code et des principales améliorations à apporter"
+}
 
-Format de réponse:
----
-## Commentaires
-
-- Fichier: example.ts
-- Ligne: 42
-- Catégorie: Sécurité
-- Sévérité: Critique
-- Problème: Description du problème
-- Suggestion: Suggestion d'amélioration
-
-(répéter pour chaque problème)
-
-## Résumé
-
-Résumé global de la qualité du code et principales améliorations à apporter.
----`;
+Sois strict sur le format JSON, les clés doivent être exactement comme dans l'exemple. Les valeurs valides pour "category" sont: bug, sécurité, performance, style, maintenance. Les valeurs valides pour "severity" sont: critique, importante, mineure.`;
 
     return prompt;
   }
 
-  private parseResponse(response: string, files: CodeFile[]): AiResponse {
-    // Structure pour stocker le résultat
-    const result: AiResponse = {
-      comments: [],
-      summary: ''
-    };
-    
-    // Extraction du résumé (tout ce qui se trouve après "## Résumé")
-    const summaryMatch = response.match(/## Résumé\s*([\s\S]+)$/);
-    if (summaryMatch && summaryMatch[1]) {
-      result.summary = summaryMatch[1].trim();
-    }
-    
-    // Extraction des commentaires
-    const commentPattern = /- Fichier: (.+?)\s*\n- Ligne: (\d+)\s*\n- Catégorie: (.+?)\s*\n- Sévérité: (.+?)\s*\n- Problème: ([\s\S]+?)\n- Suggestion: ([\s\S]+?)(?=\n\n- Fichier:|\n\n## Résumé|$)/g;
-    const commentMatches = response.matchAll(commentPattern);
-    
-    for (const match of Array.from(commentMatches)) {
-      const [_, filePath, lineStr, categoryStr, severityStr, problem, suggestion] = match;
-      const lineNumber = parseInt(lineStr, 10);
-      
-      // Convertir la catégorie en type énuméré
-      let category: CommentCategory;
-      switch (categoryStr.toLowerCase().trim()) {
-        case 'bug': category = CommentCategory.BUG; break;
-        case 'sécurité': category = CommentCategory.SECURITY; break;
-        case 'performance': category = CommentCategory.PERFORMANCE; break;
-        case 'style': category = CommentCategory.STYLE; break;
-        case 'maintenance': category = CommentCategory.MAINTENANCE; break;
-        default: category = CommentCategory.OTHER;
+  private parseJsonResponse(jsonResponseText: string, files: CodeFile[]): AiResponse {
+    try {
+      // Extraire le JSON de la réponse (au cas où il y aurait du texte avant/après)
+      const jsonMatch = jsonResponseText.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+        throw new Error("No JSON object found in the response");
       }
       
-      // Convertir la sévérité en type énuméré
-      let severity: Severity;
-      switch (severityStr.toLowerCase().trim()) {
-        case 'critique': severity = Severity.CRITICAL; break;
-        case 'importante': severity = Severity.MAJOR; break;
-        case 'mineure': severity = Severity.MINOR; break;
-        default: severity = Severity.MINOR;
-      }
+      const jsonStr = jsonMatch[0];
+      const reviewData: CodeReviewResponse = JSON.parse(jsonStr);
       
-      // Vérifier que le fichier et la ligne existent dans les diffs
-      const file = files.find(f => f.path === filePath.trim());
-      if (file) {
-        const isDiffLine = file.diffs.some(d => d.lineNumber === lineNumber);
-        if (isDiffLine || true) { // Pour l'instant, on accepte tous les commentaires, même sur des lignes non modifiées
-          const comment: Comment = {
-            filePath: filePath.trim(),
-            lineNumber,
-            category,
-            severity,
-            content: `${problem.trim()}\n\nSuggestion: ${suggestion.trim()}`
-          };
-          result.comments.push(comment);
+      // Convertir en format AiResponse
+      const result: AiResponse = {
+        comments: [],
+        summary: reviewData.summary || "Pas de résumé fourni"
+      };
+      
+      // Convertir chaque commentaire
+      for (const comment of reviewData.comments) {
+        // Vérifier que le fichier existe
+        const file = files.find(f => f.path === comment.filePath);
+        if (!file) continue;
+        
+        // Vérifier que la ligne est dans les diffs (optionnel, désactivé pour l'instant)
+        // const isDiffLine = file.diffs.some(d => d.lineNumber === comment.lineNumber);
+        // if (!isDiffLine) continue;
+        
+        // Convertir la catégorie
+        let category: CommentCategory;
+        switch (comment.category.toLowerCase()) {
+          case 'bug': category = CommentCategory.BUG; break;
+          case 'sécurité': category = CommentCategory.SECURITY; break;
+          case 'performance': category = CommentCategory.PERFORMANCE; break;
+          case 'style': category = CommentCategory.STYLE; break;
+          case 'maintenance': category = CommentCategory.MAINTENANCE; break;
+          default: category = CommentCategory.OTHER;
         }
+        
+        // Convertir la sévérité
+        let severity: Severity;
+        switch (comment.severity.toLowerCase()) {
+          case 'critique': severity = Severity.CRITICAL; break;
+          case 'importante': severity = Severity.MAJOR; break;
+          case 'mineure': severity = Severity.MINOR; break;
+          default: severity = Severity.MINOR;
+        }
+        
+        // Créer le commentaire
+        result.comments.push({
+          filePath: comment.filePath,
+          lineNumber: comment.lineNumber,
+          category,
+          severity,
+          content: `${comment.problem}\n\nSuggestion: ${comment.suggestion}`
+        });
       }
+      
+      return result;
+    } catch (error) {
+      console.error(`Error parsing JSON response: ${error.message}`);
+      
+      // Si le parsing JSON échoue, fallback sur une réponse vide
+      return {
+        comments: [],
+        summary: "Erreur lors de l'analyse de la revue de code."
+      };
     }
-    
-    return result;
   }
 }

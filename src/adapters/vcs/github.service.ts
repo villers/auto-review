@@ -159,7 +159,7 @@ export class GithubService implements VcsService {
         projectId,
         pullRequestId,
         commitSha,
-        `## AI Code Review Summary\n\n${summary}`,
+        summary, // Soumettre le résumé tel quel, sans ajouter de titre
         'COMMENT'
       );
     } catch (error: any) {

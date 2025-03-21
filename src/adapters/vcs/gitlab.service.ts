@@ -179,7 +179,7 @@ export class GitlabService implements VcsService {
       const response: AxiosResponse = await lastValueFrom(this.httpService.post(
         `${this.apiConfig.baseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes`,
         {
-          body: `## AI Code Review Summary\n\n${summary}`
+          body: summary // Soumettre le résumé tel quel, sans ajouter de titre
         },
         {
           headers: this.apiConfig.authHeaders
@@ -396,7 +396,7 @@ export class GitlabService implements VcsService {
     await lastValueFrom(this.httpService.post(
       `${this.apiConfig.baseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes`,
       {
-        body: `**Code Review**: ${filePath} (line ${lineNumber})\n\n${content}`
+        body: `**Code Review**: ${filePath} (ligne ${lineNumber})\n\n${content}`
       },
       { headers: this.apiConfig.authHeaders }
     ));
