@@ -18,7 +18,8 @@ interface ClaudeResponse {
 export class ClaudeService implements AiService {
   private readonly apiKey: string;
   private readonly apiUrl: string = 'https://api.anthropic.com/v1/messages';
-  private readonly model: string = 'claude-3-opus-20240229';
+  //private readonly model: string = 'claude-3-opus-20240229';
+  private readonly model: string = 'claude-3-7-sonnet-latest';
 
   constructor(
     private readonly configService: ConfigService,
@@ -46,7 +47,8 @@ export class ClaudeService implements AiService {
               'x-api-key': this.apiKey,
               'anthropic-version': '2023-06-01',
               'content-type': 'application/json'
-            }
+            },
+            timeout: 60000, // 60 secondes
           }
         )
       );

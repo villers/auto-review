@@ -13,6 +13,7 @@ import { ClaudeService } from './adapters/ai/claude.service';
 // API Controllers
 import { GitlabController } from './api/controllers/gitlab.controller';
 import { GithubController } from './api/controllers/github.controller';
+import { TestController } from './api/controllers/test.controller';
 
 @Module({
   imports: [
@@ -27,7 +28,8 @@ import { GithubController } from './api/controllers/github.controller';
   ],
   controllers: [
     GitlabController,
-    GithubController
+    GithubController,
+    TestController
   ],
   providers: [
     // Service métier
