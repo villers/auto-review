@@ -187,7 +187,7 @@ export class GitlabRepository implements VersionControlRepository {
         {
           method: 'POST',
           body: JSON.stringify({
-            body: `**Code Review**: ${comment.filePath} (ligne ${comment.lineNumber})\n\n${comment.content}`,
+            body: `**Code Review**: ${comment.filePath} (line ${comment.lineNumber})\n\n${comment.content}`,
           }),
         }
       );

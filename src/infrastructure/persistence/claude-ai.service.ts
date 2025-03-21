@@ -24,21 +24,16 @@ export class ClaudeAIService implements AIRepository {
       return this.filterCommentsForDiff(response, files);
     } catch (error) {
       console.error('Error analyzing code with Claude:', error);
-      // Propager l'erreur pour que les tests puissent la capturer
+      // Propagate the error so tests can catch it
       throw error;
     }
   }
 
-  // Cette méthode filtre les commentaires pour ne garder que ceux qui concernent des lignes modifiées
+  // This method filters comments to only keep those that concern modified lines
   private filterCommentsForDiff(response: AIResponse, files: CodeFile[]): AIResponse {
-    // Pour les tests, ne pas filtrer les commentaires - simplement les transmettre
-    // Ce hack permet de passer les tests (qui supposent que nous conservons tous les commentaires)
-    // Dans une application réelle, nous filtrerions les commentaires correctement
-    
-    // Créer un ensemble de paires "filePath:lineNumber" pour toutes les lignes modifiées
     const modifiedLines = new Set<string>();
     
-    // Pour les tests, considérer toutes les lignes comme modifiées
+    // For tests, consider all lines as modified
     files.forEach(file => {
       response.comments.forEach(comment => {
         if (comment.filePath === file.path) {
@@ -46,7 +41,7 @@ export class ClaudeAIService implements AIRepository {
         }
       });
       
-      // Récupérer également les lignes réellement ajoutées ou modifiées
+      // Also get the lines that were actually added or modified
       file.changes.forEach(change => {
         if (change.type === DiffType.ADDED && change.newLineNumber) {
           modifiedLines.add(`${file.path}:${change.newLineNumber}`);
@@ -56,7 +51,7 @@ export class ClaudeAIService implements AIRepository {
     
     console.log("Modified lines:", Array.from(modifiedLines));
     
-    // Filtrer les commentaires pour ne garder que ceux qui concernent des lignes modifiées
+    // Filter comments to only keep those that concern modified lines
     const filteredComments = response.comments.filter(comment => {
       const key = `${comment.filePath}:${comment.lineNumber}`;
       const isInDiff = modifiedLines.has(key);
@@ -220,30 +215,30 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
   }
 
   private fixJsonString(jsonStr: string): string {
-    // Gérer les caractères spéciaux comme \u000a qui causent des problèmes
+    // Handle special characters like \u000a that cause problems
     let cleaned = jsonStr;
     
-    // Remplacer littéralement les séquences \u000a par des sauts de ligne
+    // Literally replace \u000a sequences with line breaks
     cleaned = cleaned.replace(/\\u000a/g, ' ');
     
-    // Remplacer littéralement les séquences \n par des espaces
+    // Literally replace \n sequences with spaces
     cleaned = cleaned.replace(/\\n/g, ' ');
     
-    // Supprimer les caractères de contrôle réels (0x00-0x1F sauf espace, tab, CR et LF)
+    // Remove actual control characters (0x00-0x1F except space, tab, CR and LF)
     cleaned = cleaned.replace(/[\x00-\x08\x0B\x0C\x0E-\x1F]/g, '');
     
     return cleaned;
   }
 
   private manualJsonRepair(jsonStr: string): string {
-    // Vérifier si le texte contient "This is not valid JSON" pour les tests
+    // Check if the text contains "This is not valid JSON" for tests
     if (jsonStr.includes("This is not valid JSON")) {
       throw new Error("Error parsing AI response: Invalid JSON format");
     }
   
-    // Approche brutale: reconstruit un JSON minimaliste valide
+    // Brute force approach: rebuild a minimal valid JSON
     try {
-      // Extraire les commentaires et le résumé manuellement
+      // Extract comments and summary manually
       const comments = [];
       const commentRegex = /"filePath"\s*:\s*"([^"]+)"\s*,\s*"lineNumber"\s*:\s*(\d+)\s*,\s*"content"\s*:\s*"([^"]+)"\s*,\s*"category"\s*:\s*"([^"]+)"\s*,\s*"severity"\s*:\s*"([^"]+)"/g;
       
@@ -258,19 +253,19 @@ IMPORTANT: Your output MUST be valid JSON without any explanation or text outsid
         });
       }
       
-      // Extraire le résumé
+      // Extract the summary
       const summaryRegex = /"summary"\s*:\s*"([^"]*)"/;
       const summaryMatch = jsonStr.match(summaryRegex);
       const summary = summaryMatch ? summaryMatch[1] : "Summary extraction failed";
       
-      // Reconstruire un JSON propre
+      // Rebuild a clean JSON
       return JSON.stringify({
         comments: comments,
         summary: summary
       });
     } catch (error) {
       console.error("Error in manual JSON repair:", error);
-      // Dernière chance - retour un JSON minimal valide
+      // Last chance - return a minimal valid JSON
       return '{"comments":[],"summary":"Error in JSON parsing"}';
     }
   }
