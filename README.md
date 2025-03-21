@@ -1,109 +1,109 @@
 # GitLab/GitHub Review
 
-An AI-powered code review system for GitLab and GitHub repositories that uses Claude AI to provide detailed feedback on merge/pull requests.
+Un système de revue de code automatisé pour les dépôts GitLab et GitHub qui utilise Claude AI pour fournir des commentaires détaillés sur les merge/pull requests.
 
-## Features
+## Fonctionnalités
 
-- Automatically analyze merge/pull requests when they are opened or updated
-- Support for both GitLab and GitHub repositories
-- Identify potential issues in code: bugs, security vulnerabilities, performance issues, and more
-- Suggest improvements and best practices
-- Post comments directly on the merge/pull request
-- Provide a summary of the overall code quality
+- Analyse automatique des merge/pull requests lors de leur ouverture ou mise à jour
+- Prise en charge des dépôts GitLab et GitHub
+- Identification des problèmes potentiels dans le code : bugs, vulnérabilités de sécurité, problèmes de performance, etc.
+- Suggestions d'améliorations et de bonnes pratiques
+- Publication de commentaires directement sur la merge/pull request
+- Résumé global de la qualité du code
 
 ## Architecture
 
-This project follows clean architecture principles to ensure maintainability and flexibility:
+Le projet suit une architecture simple et maintenable :
 
-- **Core**: Domain entities, use cases, and repository interfaces
-- **Infrastructure**: External implementations (GitLab API, GitHub API, Claude AI, persistence)
-- **Presentation**: Controllers, DTOs, and API responses
+- **Core** : Interfaces, entités et services métier
+- **Adapters** : Implémentations des interfaces pour les services externes (GitLab, GitHub, Claude)
+- **API** : Contrôleurs et webhooks pour les intégrations
 
-## Getting Started
+## Pour démarrer
 
-### Prerequisites
+### Prérequis
 
-- Node.js (v18 or later)
-- A GitLab and/or GitHub account with API access
-- A Claude API key
+- Node.js (v18 ou ultérieur)
+- Un compte GitLab et/ou GitHub avec accès API
+- Une clé API Claude
 
 ### Installation
 
-1. Clone the repository
+1. Cloner le dépôt
 ```bash
 git clone https://github.com/yourusername/gitlab-review.git
 cd gitlab-review
 ```
 
-2. Install dependencies
+2. Installer les dépendances
 ```bash
 npm install
 ```
 
-3. Copy the example environment file and update with your credentials
+3. Copier le fichier d'environnement d'exemple et le mettre à jour avec vos identifiants
 ```bash
 cp .env.example .env
 ```
 
-4. Edit the `.env` file with your GitLab/GitHub and Claude API credentials
+4. Éditer le fichier `.env` avec vos identifiants GitLab/GitHub et Claude API
 
-### Running the Application
+### Exécution de l'application
 
 ```bash
-# Development mode
+# Mode développement
 npm run start:dev
 
-# Production mode
+# Mode production
 npm run build
 npm run start:prod
 ```
 
-## Setting Up Webhooks
+## Configuration des Webhooks
 
 ### GitLab
 
-To automatically trigger reviews on new merge requests:
+Pour déclencher automatiquement des revues sur les nouvelles merge requests :
 
-1. Go to your GitLab project settings
-2. Navigate to Webhooks
-3. Add a new webhook with the URL `http://your-server/webhook/gitlab`
-4. Select the "Merge Request events" trigger
-5. Add the secret token from your `GITLAB_WEBHOOK_TOKEN` environment variable
-6. Save the webhook
+1. Accédez aux paramètres de votre projet GitLab
+2. Naviguez vers Webhooks
+3. Ajoutez un nouveau webhook avec l'URL `http://votre-serveur/api/webhook/gitlab`
+4. Sélectionnez le déclencheur "Merge Request events"
+5. Ajoutez le jeton secret depuis votre variable d'environnement `GITLAB_WEBHOOK_TOKEN`
+6. Enregistrez le webhook
 
 ### GitHub
 
-To automatically trigger reviews on new pull requests:
+Pour déclencher automatiquement des revues sur les nouvelles pull requests :
 
-1. Go to your GitHub repository settings
-2. Navigate to Webhooks
-3. Add a new webhook with the URL `http://your-server/webhook/github`
-4. Select the "Pull request" event
-5. Add the secret from your `GITHUB_WEBHOOK_SECRET` environment variable
-6. Save the webhook
+1. Accédez aux paramètres de votre dépôt GitHub
+2. Naviguez vers Webhooks
+3. Ajoutez un nouveau webhook avec l'URL `http://votre-serveur/api/webhook/github`
+4. Sélectionnez l'événement "Pull request"
+5. Ajoutez le secret depuis votre variable d'environnement `GITHUB_WEBHOOK_SECRET`
+6. Enregistrez le webhook
 
 ## Configuration
 
-| Environment Variable | Description |
+| Variable d'environnement | Description |
 |----------------------|-------------|
-| PORT | Server port (default: 3000) |
-| CLAUDE_API_KEY | Your Claude AI API key |
-| GITLAB_API_URL | GitLab API URL (default: https://gitlab.com/api/v4) |
-| GITLAB_API_TOKEN | Your GitLab personal access token |
-| GITLAB_WEBHOOK_TOKEN | Secret token for GitLab webhooks |
-| GITHUB_API_URL | GitHub API URL (default: https://api.github.com) |
-| GITHUB_API_TOKEN | Your GitHub personal access token |
-| GITHUB_WEBHOOK_SECRET | Secret for GitHub webhooks |
+| PORT | Port du serveur (par défaut : 3000) |
+| CLAUDE_API_KEY | Votre clé API Claude AI |
+| GITLAB_API_URL | URL de l'API GitLab (par défaut : https://gitlab.com/api/v4) |
+| GITLAB_API_TOKEN | Votre token d'accès personnel GitLab |
+| GITLAB_WEBHOOK_TOKEN | Token secret pour les webhooks GitLab |
+| GITHUB_API_URL | URL de l'API GitHub (par défaut : https://api.github.com) |
+| GITHUB_API_TOKEN | Votre token d'accès personnel GitHub |
+| GITHUB_WEBHOOK_SECRET | Secret pour les webhooks GitHub |
 
-## Future Enhancements
+## Améliorations futures
 
-- Database persistence (PostgreSQL/MongoDB)
-- Custom review rules
-- User authentication and authorization
-- Review history and analytics
-- Support for multiple AI providers
-- Additional version control systems (Bitbucket, Azure DevOps)
+- Persistance en base de données (PostgreSQL/MongoDB)
+- Règles de revue personnalisées
+- Authentification et autorisation des utilisateurs
+- Historique des revues et analytiques
+- Support pour plusieurs fournisseurs d'IA
+- Systèmes de contrôle de version supplémentaires (Bitbucket, Azure DevOps)
 
-## License
+## Licence
 
 [MIT](LICENSE)

@@ -1,66 +1,47 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 
-// Core domain providers
-import { AnalyzeMergeRequestUseCase } from '@core/usecases/analyze-merge-request.usecase';
+// Core
+import { CodeReviewService } from './core/services/code-review.service';
 
-// Infrastructure providers
-import { ClaudeAIService } from '@infrastructure/persistence/claude-ai.service';
-import { OpenAIService } from '@infrastructure/persistence/openai.service';
-import { AIFactoryService } from '@infrastructure/persistence/ai.factory.service';
-import { GitlabRepository } from '@infrastructure/persistence/gitlab.repository';
-import { GithubRepository } from '@infrastructure/persistence/github.repository';
-import { VersionControlRepository } from '@core/domain/repositories/version-control.repository';
-import { VersionControlService } from '@infrastructure/persistence/version-control.adapter';
-import { AIRepository } from '@core/domain/repositories/ai.repository';
-import { AI_REPOSITORY_TOKEN, VERSION_CONTROL_REPOSITORY_TOKEN } from '@core/domain/repositories/injection-tokens';
+// Adapters
+import { GitlabService } from './adapters/vcs/gitlab.service';
+import { GithubService } from './adapters/vcs/github.service';
+import { ClaudeService } from './adapters/ai/claude.service';
 
-// Controllers
-import { ReviewController } from '@presentation/controllers/review.controller';
-import { WebhookController } from '@presentation/controllers/webhook.controller';
+// API Controllers
+import { GitlabController } from './api/controllers/gitlab.controller';
+import { GithubController } from './api/controllers/github.controller';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      cache: true
     }),
+    HttpModule.register({
+      timeout: 15000,
+      maxRedirects: 5
+    })
   ],
   controllers: [
-    ReviewController,
-    WebhookController,
+    GitlabController,
+    GithubController
   ],
   providers: [
-    // Services
-    ClaudeAIService,
-    OpenAIService,
-    AIFactoryService,
-    VersionControlService,
-    GitlabRepository,
-    GithubRepository,
+    // Service métier
+    CodeReviewService,
     
-    // Provider pour AIRepository
+    // Services VCS
+    GitlabService,
+    GithubService,
+    
+    // Service AI
     {
-      provide: AI_REPOSITORY_TOKEN,
-      useFactory: (aiFactory: AIFactoryService) => {
-        return aiFactory.getRepository();
-      },
-      inject: [AIFactoryService],
-    },
-    
-    // Provider pour VersionControlRepository
-    {
-      provide: VERSION_CONTROL_REPOSITORY_TOKEN,
-      useFactory: (vcsService: VersionControlService, gitlab: GitlabRepository, github: GithubRepository) => {
-        // Par défaut, retourne l'implémentation GitLab, mais cela sera remplacé
-        // dynamiquement dans le contrôleur en fonction du type de VCS
-        return gitlab;
-      },
-      inject: [VersionControlService, GitlabRepository, GithubRepository],
-    },
-    
-    // Use cases
-    AnalyzeMergeRequestUseCase,
-  ],
+      provide: 'AI_SERVICE',
+      useClass: ClaudeService
+    }
+  ]
 })
 export class AppModule {}
