@@ -118,30 +118,40 @@ export class GitlabService implements VcsService {
   }
 
   /**
-   * Soumet un commentaire sur une ligne spécifique d'un fichier
+   * Soumet un commentaire sur une ou plusieurs lignes d'un fichier
    * @param projectId Identifiant du projet
    * @param mergeRequestId Identifiant de la merge request
    * @param filePath Chemin du fichier
-   * @param lineNumber Numéro de ligne
+   * @param lineNumber Numéro de ligne de début
    * @param content Contenu du commentaire
+   * @param endLineNumber Optionnel: Numéro de ligne de fin pour un commentaire multi-lignes
    */
   async submitComment(
     projectId: string, 
     mergeRequestId: number, 
     filePath: string, 
     lineNumber: number, 
-    content: string
+    content: string,
+    endLineNumber?: number
   ): Promise<void> {
     try {
+      // Préparer l'information de plage de lignes pour le message
+      let rangeInfo = `ligne ${lineNumber}`;
+      if (endLineNumber && endLineNumber > lineNumber) {
+        rangeInfo = `lignes ${lineNumber}-${endLineNumber}`;
+      }
+      
       // Essayer d'abord avec un commentaire positionnel si nous avons les références
       if (this.diffReferences.baseSha && this.diffReferences.headSha) {
-        // Essayer avec la nouvelle ligne seulement
+        // Pour les commentaires multi-lignes, on utilise uniquement la première ligne
+        // GitLab ne supporte pas nativement les commentaires sur des plages de lignes
         const success = await this.tryPositionedComment(
           projectId, 
           mergeRequestId, 
           filePath,
           lineNumber,
-          content, 
+          content,
+          rangeInfo, 
           false
         );
         
@@ -153,7 +163,8 @@ export class GitlabService implements VcsService {
           mergeRequestId,
           filePath,
           lineNumber,
-          content, 
+          content,
+          rangeInfo,
           true
         );
         
@@ -161,7 +172,7 @@ export class GitlabService implements VcsService {
       }
 
       // Fallback à une note simple
-      await this.submitSimpleNote(projectId, mergeRequestId, filePath, lineNumber, content);
+      await this.submitSimpleNote(projectId, mergeRequestId, filePath, rangeInfo, content);
     } catch (error: any) {
       console.error('Error submitting comment:', error);
       throw new Error(`Failed to submit comment: ${error.message}`);
@@ -179,7 +190,7 @@ export class GitlabService implements VcsService {
       const response: AxiosResponse = await lastValueFrom(this.httpService.post(
         `${this.apiConfig.baseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes`,
         {
-          body: summary // Soumettre le résumé tel quel, sans ajouter de titre
+          body: summary
         },
         {
           headers: this.apiConfig.authHeaders
@@ -335,6 +346,7 @@ export class GitlabService implements VcsService {
    * @param filePath Chemin du fichier
    * @param lineNumber Numéro de ligne
    * @param content Contenu du commentaire
+   * @param rangeInfo Information sur la plage de lignes pour le message
    * @param includeOldPath Inclure l'ancien chemin (pour les lignes modifiées)
    * @returns Succès ou échec
    */
@@ -344,6 +356,7 @@ export class GitlabService implements VcsService {
     filePath: string,
     lineNumber: number,
     content: string,
+    rangeInfo: string,
     includeOldPath: boolean
   ): Promise<boolean> {
     // Construire la position pour le commentaire
@@ -365,7 +378,7 @@ export class GitlabService implements VcsService {
       const response: AxiosResponse = await lastValueFrom(this.httpService.post(
         `${this.apiConfig.baseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/discussions`,
         {
-          body: `Code Review: ${content}`,
+          body: `Code Review (${rangeInfo}): ${content}`,
           position
         },
         { headers: this.apiConfig.authHeaders }
@@ -383,20 +396,20 @@ export class GitlabService implements VcsService {
    * @param projectId Identifiant du projet
    * @param mergeRequestId Identifiant de la merge request
    * @param filePath Chemin du fichier
-   * @param lineNumber Numéro de ligne
+   * @param rangeInfo Information sur la plage de lignes pour le message
    * @param content Contenu du commentaire
    */
   private async submitSimpleNote(
     projectId: string,
     mergeRequestId: number,
     filePath: string,
-    lineNumber: number,
+    rangeInfo: string,
     content: string
   ): Promise<void> {
     await lastValueFrom(this.httpService.post(
       `${this.apiConfig.baseUrl}/projects/${encodeURIComponent(projectId)}/merge_requests/${mergeRequestId}/notes`,
       {
-        body: `**Code Review**: ${filePath} (ligne ${lineNumber})\n\n${content}`
+        body: `**Code Review**: ${filePath} (${rangeInfo})\n\n${content}`
       },
       { headers: this.apiConfig.authHeaders }
     ));

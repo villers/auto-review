@@ -11,6 +11,7 @@ export interface ReviewComment {
   id: string;
   filePath: string;
   lineNumber: number;
+  endLineNumber?: number; // Ligne de fin pour un commentaire multi-lignes
   content: string;
   category: CommentCategory;
   severity: Severity;

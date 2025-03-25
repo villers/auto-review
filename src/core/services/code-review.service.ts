@@ -16,7 +16,7 @@ export class CodeReviewService {
     mergeRequestId: number,
     userId: string,
     vcsService?: VcsService,
-    postSummary: boolean = false
+    postSummary: boolean = false // Paramètre pour contrôler l'affichage du résumé
   ): Promise<Review> {
     // Utiliser le service VCS fourni ou le service par défaut
     const service = vcsService || this.defaultVcsService;
@@ -42,6 +42,7 @@ export class CodeReviewService {
         id: uuidv4(),
         filePath: comment.filePath,
         lineNumber: comment.lineNumber,
+        endLineNumber: comment.endLineNumber, // Prendre en charge les plages de lignes
         content: comment.content,
         category: comment.category,
         severity: comment.severity,
@@ -55,7 +56,8 @@ export class CodeReviewService {
           mergeRequestId,
           comment.filePath,
           comment.lineNumber,
-          comment.content
+          comment.content,
+          comment.endLineNumber // Transmettre la ligne de fin au service VCS
         );
       }
       

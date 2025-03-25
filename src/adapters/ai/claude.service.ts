@@ -18,6 +18,7 @@ interface CodeReviewResponse {
   comments: {
     filePath: string;
     lineNumber: number;
+    endLineNumber?: number; // Ajout d'une ligne de fin optionnelle
     category: string;
     severity: string;
     problem: string;
@@ -100,11 +101,14 @@ Voici ce qui a été modifié:\n\n`;
     
     prompt += `Pour chaque problème que tu trouves dans les diff, indique:
 1. Le fichier concerné
-2. Le numéro de ligne
-3. La catégorie du problème (bug, sécurité, performance, style, maintenance)
-4. La sévérité (critique, importante, mineure)
-5. Une description du problème
-6. Une suggestion d'amélioration
+2. Le numéro de ligne de début
+3. Le numéro de ligne de fin (facultatif, uniquement si le problème concerne plusieurs lignes)
+4. La catégorie du problème (bug, sécurité, performance, style, maintenance)
+5. La sévérité (critique, importante, mineure)
+6. Une description du problème
+7. Une suggestion d'amélioration
+
+IMPORTANT: Si un problème concerne plusieurs lignes de code connexes (comme une fonction entière ou un bloc logique), utilise lineNumber pour la ligne de début et endLineNumber pour la ligne de fin.
 
 IMPORTANT: Réponds uniquement avec un objet JSON valide ayant le format suivant, sans aucun texte avant ou après:
 {
@@ -112,6 +116,7 @@ IMPORTANT: Réponds uniquement avec un objet JSON valide ayant le format suivant
     {
       "filePath": "chemin/vers/fichier.ext",
       "lineNumber": 42,
+      "endLineNumber": 45,  // Facultatif, seulement si le problème concerne plusieurs lignes
       "category": "sécurité",
       "severity": "critique",
       "problem": "Description du problème détaillée",
@@ -171,13 +176,20 @@ Sois strict sur le format JSON, les clés doivent être exactement comme dans l'
         }
         
         // Créer le commentaire
-        result.comments.push({
+        const newComment: Comment = {
           filePath: comment.filePath,
           lineNumber: comment.lineNumber,
           category,
           severity,
           content: `${comment.problem}\n\nSuggestion: ${comment.suggestion}`
-        });
+        };
+        
+        // Ajouter la ligne de fin si elle existe
+        if (comment.endLineNumber && comment.endLineNumber > comment.lineNumber) {
+          newComment.endLineNumber = comment.endLineNumber;
+        }
+        
+        result.comments.push(newComment);
       }
       
       return result;

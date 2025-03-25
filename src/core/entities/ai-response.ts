@@ -15,10 +15,16 @@ export enum Severity {
 
 export interface Comment {
   filePath: string;
+  
+  // Une seule ligne ou la ligne de début pour un commentaire multi-lignes
   lineNumber: number;
-  content: string;
+  
+  // Ligne de fin pour un commentaire multi-lignes (optionnel)
+  endLineNumber?: number;
+  
   category: CommentCategory;
   severity: Severity;
+  content: string;
 }
 
 export interface AiResponse {

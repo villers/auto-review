@@ -10,14 +10,21 @@ export interface VcsService {
   getMergeRequestFiles(projectId: string, mergeRequestId: number): Promise<CodeFile[]>;
   
   /**
-   * Soumet un commentaire sur une ligne spécifique d'un fichier dans une merge/pull request
+   * Soumet un commentaire sur une ou plusieurs lignes d'un fichier dans une merge/pull request
+   * @param projectId
+   * @param mergeRequestId
+   * @param filePath
+   * @param lineNumber
+   * @param content
+   * @param endLineNumber Optionnel : ligne de fin pour un commentaire multi-lignes
    */
   submitComment(
     projectId: string, 
     mergeRequestId: number, 
     filePath: string, 
-    lineNumber: number, 
-    content: string
+    lineNumber: number,
+    content: string,
+    endLineNumber?: number
   ): Promise<void>;
   
   /**
