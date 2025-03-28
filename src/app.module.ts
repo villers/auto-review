@@ -1,51 +1,49 @@
 import { Module } from '@nestjs/common';
+import { HttpModule } from '@nestjs/axios';
 import { ConfigModule } from '@nestjs/config';
 
-// Core domain providers
-import { AnalyzeMergeRequestUseCase } from './core/usecases/analyze-merge-request.usecase';
-import { GetReviewUseCase } from './core/usecases/get-review.usecase';
+// Core
+import { CodeReviewService } from './core/services/code-review.service';
 
-// Infrastructure providers
-import { ClaudeAIService } from './infrastructure/ai/claude-ai.service';
-import { GitlabRepository } from './infrastructure/gitlab/gitlab.repository';
-import { InMemoryReviewRepository } from './infrastructure/persistence/in-memory-review.repository';
+// Adapters
+import { GitlabService } from './adapters/vcs/gitlab.service';
+import { GithubService } from './adapters/vcs/github.service';
+import { ClaudeService } from './adapters/ai/claude.service';
 
-// Controllers
-import { ReviewController } from './presentation/controllers/review.controller';
-import { WebhookController } from './presentation/controllers/webhook.controller';
+// API Controllers
+import { GitlabController } from './api/controllers/gitlab.controller';
+import { GithubController } from './api/controllers/github.controller';
+import { TestController } from './api/controllers/test.controller';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: ['.env.local', '.env'],
+      cache: true
     }),
+    HttpModule.register({
+      timeout: 15000,
+      maxRedirects: 5
+    })
   ],
   controllers: [
-    ReviewController,
-    WebhookController,
+    GitlabController,
+    GithubController,
+    TestController
   ],
   providers: [
-    // Use cases
-    {
-      provide: AnalyzeMergeRequestUseCase,
-      useFactory: (
-        reviewRepo,
-        vcRepo,
-        aiService,
-      ) => new AnalyzeMergeRequestUseCase(reviewRepo, vcRepo, aiService),
-      inject: [InMemoryReviewRepository, GitlabRepository, ClaudeAIService],
-    },
-    {
-      provide: GetReviewUseCase,
-      useFactory: (reviewRepo) => new GetReviewUseCase(reviewRepo),
-      inject: [InMemoryReviewRepository],
-    },
+    // Service métier
+    CodeReviewService,
     
-    // Infrastructure
-    InMemoryReviewRepository,
-    GitlabRepository,
-    ClaudeAIService,
-  ],
+    // Services VCS
+    GitlabService,
+    GithubService,
+    
+    // Service AI
+    {
+      provide: 'AI_SERVICE',
+      useClass: ClaudeService
+    }
+  ]
 })
 export class AppModule {}
